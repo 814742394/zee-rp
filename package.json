@@ -1,9 +1,9 @@
 {
   "name": "zee-rp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "type": "module",
-  "description": "Independent tools and MCP server for reading and editing Axure RP 11 prototype files",
+  "description": "Independent tools and MCP server for reading and editing Axure RP 9 and RP 11 prototype files",
   "bin": {
     "zee-rp": "./bin/axure.mjs",
     "zee-rp-mcp": "./bin/mcp.mjs"
@@ -20,7 +20,9 @@
     "test:historical": "node test/historical-regression.mjs",
     "test:historical-mcp": "node test/historical-mcp-check.mjs",
     "test:jobs": "node test/jobs-check.mjs",
-    "mcp": "node bin/mcp.mjs"
+    "mcp": "node bin/mcp.mjs",
+    "test:rp9": "node test/rp9-core-check.mjs",
+    "test:rp9-native": "node test/rp9-native-check.mjs"
   },
   "optionalDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1"

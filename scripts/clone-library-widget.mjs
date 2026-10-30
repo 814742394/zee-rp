@@ -4,6 +4,8 @@ import { readRecords, encodeRecord, replaceRecord } from './rp-records.mjs';
 import { readRp } from './rp-read.mjs';
 import { parsePayload, encodePayload, field } from './parse-payload.mjs';
 import { closureOf, cloneInto } from './clone-closure.mjs';
+import { preflightCli } from './version-guard.mjs';
+import { detectEdition, editionReport } from './rp-version.mjs';
 
 const uniquePage = (summary, name, role) => {
   const pages = summary.pages.filter(page => page.name === name);
@@ -19,6 +21,12 @@ export function cloneLibraryWidget(sourceFile, targetFile, outputFile, {
   const sourceBytes = readFileSync(sourceFile);
   const sourceSummary = readRp(sourceBytes, { path: sourceFile });
   const targetSummary = readRp(output, { path: targetFile });
+  // 素材与目标必须同版本：跨版本克隆会把 RP11 的类名/默认样式带进 RP9 工程（或被反向带出）。
+  const targetEdition = detectEdition(output);
+  const sourceEdition = detectEdition(sourceBytes);
+  if (targetEdition.edition !== 'unknown' && sourceEdition.edition !== 'unknown' && targetEdition.edition !== sourceEdition.edition) {
+    throw new Error(`跨版本克隆被拒绝：素材是 ${sourceEdition.label}，目标是 ${targetEdition.label}`);
+  }
   const sourcePageMeta = uniquePage(sourceSummary, sourcePageName, 'Source');
   const targetPageMeta = uniquePage(targetSummary, targetPageName, 'Target');
 
@@ -88,7 +96,9 @@ export function cloneLibraryWidget(sourceFile, targetFile, outputFile, {
     name,
     id: widget.id,
     geometry,
-    closureObjects: clone.created.length
+    closureObjects: clone.created.length,
+    edition: editionReport(targetEdition),
+    sourceEdition: editionReport(sourceEdition)
   };
 }
 
@@ -105,6 +115,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error('Usage: node clone-library-widget.mjs <source.rplib> <target.rp> <output.rp> <sourcePage> <targetPage> <newName> [--x N --y N --w N --h N]');
     process.exit(1);
   }
+  preflightCli('clone-library-widget', process.argv.slice(2));
   console.log(JSON.stringify(cloneLibraryWidget(sourceFile, targetFile, outputFile, {
     sourcePageName, targetPageName, name,
     x: flags.x, y: flags.y, width: flags.w, height: flags.h

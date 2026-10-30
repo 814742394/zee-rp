@@ -34,6 +34,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { preflightCli } from "./version-guard.mjs";
 
 const IS_MAIN = import.meta.url === pathToFileURL(process.argv[1] || import.meta.url).href;
 
@@ -369,6 +370,7 @@ if (cmd === "build") {
 } else if (cmd === "paste") {
   const f = args[1];
   if (!f || !existsSync(f)) { console.error(`文件不存在: ${f}`); process.exit(1); }
+  preflightCli("axvg paste", args.slice(1));
   const menu = !args.includes("--no-menu");
   const r = pasteAxvg(readFileSync(f, "utf8"), { menu });
   console.log(JSON.stringify(r, null, 2));

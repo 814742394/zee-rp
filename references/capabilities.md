@@ -1,10 +1,13 @@
 # Capability boundaries
 
-Updated 2026-10-13 for zee-rp 0.1.1. **31 CLI commands / 43 MCP tools.** The source reflects the 2026-10-12 implementation, plus the public CLI/MCP and packaging fixes in the changelog. All capabilities are scoped to supported inputs; no arbitrary-document guarantee is implied.
+Updated 2026-10-21 for zee-rp 0.1.2. **31 CLI commands / 43 MCP tools.** The source reflects the 2026-10-21 implementation, which adds Axure RP 9 detection and write protection on top of 0.1.1. All capabilities are scoped to supported inputs; no arbitrary-document guarantee is implied.
+
+**Axure RP 9 is a separate, narrower matrix.** The table below describes the RP 11 evidence base. RP 9 support is declared per command and per parameter combination in [Axure RP 9 capability matrix](../docs/rp9-capabilities.md), with the structural baseline in [RP 9 baseline report](../docs/rp9-baseline.md). Do not read an RP 11 row as an RP 9 conclusion.
 
 | Area | Public implementation | Evidence and limits |
 | --- | --- | --- |
-| Records, payloads and reading | `rp-records`, `parse-payload`, `rp-read` | Compressed native RP 11 inputs; uncompressed manifest writing is unsupported. Parse/three-zero health is not native acceptance. |
+| Version detection and guards | `rp-version`, `version-guard`, `rp-records` write guard | Edition is decided from in-file metadata (`xml:BreakingChanges` major, `DesignDocument.SavedEdition`). Unknown editions refuse version-sensitive writes; RP 9 refuses `apply-style` and `axvg paste`; cross-edition templates/libraries are rejected. RP 9 evidence starts at Core only. |
+| Records, payloads and reading | `rp-records`, `parse-payload`, `rp-read` | Compressed native RP 9 and RP 11 inputs; uncompressed manifest writing is unsupported. Parse/three-zero health is not native acceptance. |
 | Blank projects and pages | `blank-template`, `create-blank-project`, `create-blank-page`, `duplicate-page` | User-provided real blank template; new page/widget/container identities are remapped. Specific historical GUI samples exist. |
 | Native widgets and containers | `clone-closure`, `clone-library-widget`, `clone-library-page-content`, panel/state writers | Clone genuine local templates. Closure/scope checks deliberately reject unsupported external references and actions. |
 | Masters | `create-master`, `place-master`, `set-master-overrides` | Existing native template-based definitions/instances; recent closure fixes are offline-validated. Overrides cover supported Text/Image values, not arbitrary styles/defaults. |

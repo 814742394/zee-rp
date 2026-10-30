@@ -6,16 +6,20 @@ import { join } from 'node:path';
 import { JobManager } from '../scripts/jobs.mjs';
 import { resolveBlankTemplate } from '../scripts/blank-template.mjs';
 import { createBlankPage } from '../scripts/create-blank-page.mjs';
+import { detectEdition } from '../scripts/rp-version.mjs';
 
 const work = mkdtempSync(join(tmpdir(), 'axure-jobs-check-'));
 const source = resolveBlankTemplate();
 const original = readFileSync(source);
+// 模板若读不出主版本，按显式声明处理（测试只验证编排，不验证版本证据）；jobs 会把这件事记成 declared。
+if (detectEdition(original).edition === 'unknown') process.env.AXURE_TARGET_EDITION = 'rp11';
 const previousRoot = process.env.AXURE_WRITE_ROOT;
 process.env.AXURE_WRITE_ROOT = work;
 let running = 0, maximum = 0;
-const mockRunner = ([output]) => {
+// 助手会先回显 AXURE_GUI_PHASE edition <版本>，jobs 用它确认「启动的确实是该版本的应用」。
+const mockRunner = ([output, edition]) => {
   running++; maximum = Math.max(maximum, running);
-  const child = spawn(process.execPath, ['--input-type=module', '-e', 'import{readFileSync,writeFileSync}from"node:fs";setTimeout(()=>{const p=process.argv[1];writeFileSync(p,readFileSync(p));console.log("saved-closed-reopened")},200)', output]);
+  const child = spawn(process.execPath, ['--input-type=module', '-e', `import{readFileSync,writeFileSync}from"node:fs";setTimeout(()=>{const p=process.argv[1];writeFileSync(p,readFileSync(p));console.error("AXURE_GUI_PHASE edition ${edition} mock");console.log("saved-closed-reopened")},200)`, output]);
   child.once('close', () => { running--; });
   return child;
 };
@@ -96,7 +100,7 @@ try {
     assert.ok(!existsSync(join(a, 'physical.rp')));
   });
   await check('只保存但未关闭重开不能完成往返任务', async () => {
-    const partial = new JobManager({ runner: ([output]) => spawn(process.execPath, ['--input-type=module', '-e', 'import{readFileSync,writeFileSync}from"node:fs";setTimeout(()=>{const p=process.argv[1];writeFileSync(p,readFileSync(p));console.error("AXURE_GUI_PHASE saved")},20)', output]) });
+    const partial = new JobManager({ runner: ([output, edition]) => spawn(process.execPath, ['--input-type=module', '-e', `import{readFileSync,writeFileSync}from"node:fs";setTimeout(()=>{const p=process.argv[1];writeFileSync(p,readFileSync(p));console.error("AXURE_GUI_PHASE edition ${edition} mock");console.error("AXURE_GUI_PHASE saved")},20)`, output]) });
     const job = await partial.startRoundtrip({ source, output: join(work, 'partial.rp'), wait: true });
     assert.equal(job.validation.guiSaved, true); assert.equal(job.validation.closed, false);
     assert.equal(job.validation.reopened, false); assert.equal(job.status, 'failed'); await partial.close();

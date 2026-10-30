@@ -31,8 +31,8 @@ const COMMANDS = [
   {
     "command": "create-blank-project",
     "script": "create-blank-project.mjs",
-    "summary": "复制用户本机的 RP 11 原生空白模板生成单页空白 .rp 工程",
-    "usage": "node create-blank-project.mjs <output.rp>",
+    "summary": "按目标版本复制本机原生空白模板生成单页空白 .rp 工程（模板与目标版本必须一致）",
+    "usage": "node create-blank-project.mjs <output.rp> [--edition rp9|rp11]",
     "output": "index:2",
     "evidence": "loaded"
   },
@@ -47,7 +47,7 @@ const COMMANDS = [
   {
     "command": "create-blank-page",
     "script": "create-blank-page.mjs",
-    "summary": "把用户本机空白模板的 Page 记录追加到已有 .rp 生成新空白页",
+    "summary": "把同版本空白模板的 Page 记录追加到已有 .rp 生成新空白页（RP9 需 RP9 模板）",
     "usage": "node create-blank-page.mjs <input.rp> <output.rp> <newPageName>",
     "output": "index:3",
     "evidence": "gui-roundtrip"
@@ -143,7 +143,7 @@ const COMMANDS = [
   {
     "command": "clone-library-widget",
     "script": "clone-library-widget.mjs",
-    "summary": "从 .rplib 克隆单个原生控件到目标 .rp 页面",
+    "summary": "从同版本 .rplib 克隆单个原生控件到目标 .rp 页面（跨版本素材拒绝）",
     "usage": "node clone-library-widget.mjs <source.rplib> <target.rp> <output.rp> <sourcePage> <targetPage> <newName> [--x N --y N --w N --h N]",
     "output": "index:4",
     "evidence": "gui-roundtrip"
@@ -287,12 +287,12 @@ const LIB_SCRIPTS = [
   },
   {
     "script": "jobs.mjs",
-    "summary": "macOS GUI 保存关闭重开队列：wait:false 句柄、list/get/cancel，单服务内串行",
+    "summary": "macOS GUI 保存关闭重开队列：按文件版本选择 RP9/RP11 应用并核验，wait:false 句柄、list/get/cancel，单服务内串行",
     "evidence": "internal",
     "tools": [
       {
         "name": "gui_roundtrip",
-        "description": "复制到新文件后在 Axure RP 11 保存、关闭、重开；默认立即返回 job 句柄。仅此流程，不含 GUI 改稿和预览行为。",
+        "description": "复制到新文件后交给与文件版本一致的 Axure（RP9/RP11）保存、关闭、重开，并核验启动的确是那个版本；默认立即返回 job 句柄。仅此流程，不含 GUI 改稿和预览行为。",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -362,7 +362,7 @@ const LIB_SCRIPTS = [
   },
   {
     "script": "blank-template.mjs",
-    "summary": "解析用户本机空白模板 AXURE_BLANK_TEMPLATE 或本机缓存；不分发 Axure 模板",
+    "summary": "按版本解析/校验空白模板（AXURE_BLANK_TEMPLATE_RP9/_RP11、AXURE_BLANK_TEMPLATE、本机缓存），并可 derive 派生单页空白工程；不分发 Axure 模板",
     "evidence": "internal"
   },
   {
@@ -673,6 +673,21 @@ const LIB_SCRIPTS = [
   {
     "script": "widget-schema.mjs",
     "summary": "一次性研究工具：扫描本机 .rplib 提取各元件类型字段清单统计（顶层直接执行，按任务指定归入库清单）",
+    "evidence": "internal"
+  },
+  {
+    "script": "rp-fingerprint.mjs",
+    "summary": "结构指纹：容器头/manifest/记录类名/对象类名与版本证据，用于 RP9 与 RP11 样本对比留证（不含文档正文）",
+    "evidence": "internal"
+  },
+  {
+    "script": "rp-version.mjs",
+    "summary": "版本识别库：按 BreakingChanges 主版本与 DesignDocument.SavedEdition 判定 rp9/rp11/unknown，无 CLI 入口",
+    "evidence": "internal"
+  },
+  {
+    "script": "version-guard.mjs",
+    "summary": "版本能力检查库（CLI/MCP/直接脚本共用）：命令支持矩阵、apply-style 等 RP9 禁用动作、跨版本模板与元件库拦截",
     "evidence": "internal"
   },
   {

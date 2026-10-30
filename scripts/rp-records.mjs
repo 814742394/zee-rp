@@ -1,4 +1,32 @@
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { detectEdition, RP9 } from './rp-version.mjs';
+
+// ---- 直接脚本调用的最后一道闸 ----
+// CLI/MCP 走 engine.mjs 的版本能力检查；绕过它们直接 `node scripts/xxx.mjs` 时，写原语这一层兜底：
+// 目标工程是 RP9 时，拒绝把 RP9 不认识的类名写进记录（已知反例 apply-style → RP9 报
+// Unrecognized Type 并拒绝打开整个文件）。
+// 顺序很重要：先在待写记录上做一次廉价的字节搜索，命中才去解压整个工程判版本——正常写入零额外开销。
+const RP9_REJECTED_MARKERS = ['InteractionApplyStyle'];
+const editionCache = new WeakMap();
+
+function editionOfBuffer(file) {
+  let cached = editionCache.get(file);
+  if (!cached) {
+    try { cached = detectEdition(file).edition; }
+    catch { cached = 'unknown'; }
+    editionCache.set(file, cached);
+  }
+  return cached;
+}
+
+function assertRecordWritable(target, raw, what) {
+  if (!Buffer.isBuffer(raw) || !Buffer.isBuffer(target)) return;
+  const hit = RP9_REJECTED_MARKERS.find(marker => raw.includes(marker));
+  if (!hit) return;
+  if (editionOfBuffer(target) !== RP9) return;
+  throw new Error(`[版本拦截] 记录${what}含有 RP9 不认识的类名（含 ${hit}）：Axure RP 9 加载时报 Unrecognized Type 并拒绝打开整个文件；RP9 工程禁用 apply-style 动作`);
+}
+
 
 // RP11 样本：8B 外层头 + [01][varuint 原始长度][varuint 压缩长度][LZ4 block]。
 // 注意 encodeManifest 返回的是「8B 外层头 + 编码块」整体，长度就等于新的 dataStart。
@@ -138,6 +166,7 @@ export function encodeRecord(record, strings, payload = record.raw.subarray(reco
 
 // 替换已存在的记录，调整 manifest 中后续 parts 的相对位置；其他记录原样保留。
 export function replaceRecord(file, record, raw) {
+  assertRecordWritable(file, raw, `替换 #${record.index} ${record.className}`);
   const compressed = gzipSync(raw), length = Buffer.alloc(4);
   length.writeUInt32LE(compressed.length);
   const manifest = readManifest(file);
@@ -167,6 +196,7 @@ export function replaceRecord(file, record, raw) {
 // dataStart 的变化量正好抵消，所以旧条目只需 +D（与 replaceRecord 同一套数学）。
 // beforeRecord 只要带 .offset（gzip 魔数的绝对偏移）；前缀 8B 从其 offset-8 起算。
 export function insertRecord(file, key, raw, beforeRecord) {
+  assertRecordWritable(file, raw, `插入 ${key}`);
   const manifest = readManifest(file);
   if (manifest.value.root.children?.[key]) throw new Error(`Package already exists: ${key}`);
   const compressed = gzipSync(raw), prefix = Buffer.alloc(8);
@@ -201,6 +231,7 @@ export function insertRecord(file, key, raw, beforeRecord) {
 //     rel_new = B0            （B0 = 旧 body 长度；该位置正是新记录 8 字节前缀的起点）
 // 唯一要小心的是 manifest 本身是 LZ4 压缩的，长度会随内容变化，所以登记完再编码一次确认长度收敛。
 export function appendPackage(file, key, raw) {
+  assertRecordWritable(file, raw, `追加包 ${key}`);
   const manifest = readManifest(file);
   if (manifest.value.root.children?.[key]) throw new Error(`Package already exists: ${key}`);
   const B0 = file.length - manifest.dataStart;

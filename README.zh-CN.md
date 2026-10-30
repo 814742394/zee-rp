@@ -2,9 +2,11 @@
 
 [English](README.md) · [完整命令表](references/commands-generated.md) · [能力边界](references/capabilities.md) · [验证流程](docs/validation.md)
 
-**通过脚本或 AI 助手读取、检查和编辑受支持的 Axure RP 11 原型。**
+**通过脚本或 AI 助手读取、检查和编辑受支持的 Axure RP 11 原型，并为 Axure RP 9 提供一条明确而更窄的兼容路径。**
 
 zee-rp 是独立的原生 `.rp` 文档工具集，采用 MIT 许可证。它包含二进制记录编解码、对象引用处理、原生模板克隆、交互写入器、富文本、表格，以及可选的 Model Context Protocol（MCP）服务。公开接口提供 **31 条 CLI 命令和 43 个 MCP 工具**。
+
+每次调用都会回报文件版本，判定依据是文件内部元数据而不是文件名。在 Axure RP 9 上，只有 5 条命令属于首期 Core（`rp-read`、`set-widget-text`、`clone-library-widget`、`create-blank-project`、`create-blank-page`）；其余命令会带上「RP9 未验证」提示后才执行，`apply-style` 与 `axvg paste` 在写出任何文件之前就被拒绝。详见 [RP 9 能力矩阵](docs/rp9-capabilities.md)、[RP 9 基线报告](docs/rp9-baseline.md) 与 [RP 9 验收方式](docs/validation.md)。
 
 你可以用它理解已有原型、执行可重复的修改、基于自己的原生模板构建项目，或让 MCP 客户端按“检查—修改—验证”的顺序完成多步编辑。原生文档流程直接读取和写入 `.rp` 文件；独立的 Axvg 流程则将布局规格编译为可粘贴到 Axure 画布的内容。
 
@@ -448,6 +450,31 @@ flowchart TD
 | [scripts/pack-release.mjs](scripts/pack-release.mjs) | 完整公开发布文件选择与 SHA-256 清单 |
 
 新贡献者或 AI 助手可以先读本文，再读[能力边界](references/capabilities.md) 和[命令表](references/commands-generated.md)。修改写入器前，阅读对应工作流参考。准确合同以实现和测试为依据；历史记录解释特定旧样本，不代表对任意输入的保证。
+
+## Axure RP 9
+
+RP 9 通过「按能力声明」的方式支持，不把 RP 11 的行为当成 RP 9 的结论。
+
+```bash
+# 这个文件自报是哪个版本？（读 xml:BreakingChanges + DesignDocument.SavedEdition）
+node bin/axure.mjs rp-read my.rp | head -2
+
+# RP 9 Core 离线验收：文本改写、库克隆、新建页、新建工程、各类拒绝路径
+AXURE_RP9_SAMPLE=/path/to/rp9.rp AXURE_RP9_BLANK_PAGE="页面 2" npm run test:rp9
+
+# 从已有 RP 9 工程派生一个单页空白工程，作为 RP9 空白模板
+node scripts/blank-template.mjs derive my.rp "页面 2" "$HOME/Library/Application Support/zee-rp/templates/axure-rp9-blank.rp"
+
+# 原生验收（需要 Axure RP 9 + 辅助功能/自动化权限）
+AXURE_RP9_NATIVE_SOURCE=/path/to/output.rp npm run test:rp9-native
+```
+
+写出之前的硬规则：
+
+- 判不出版本时拒绝版本敏感写入；未知版本永远不会被当成 RP 11。
+- 目标工程与每个导入的 `.rplib` / 空白模板必须同版本。
+- `apply-style` 与 `axvg paste` 在 RP 9 上拒绝：前者会让 RP 9 报 `Unrecognized Type: Axure:InteractionApplyStyleInfo` 并拒绝打开整个文件，后者用的是 RP 11 剪贴板格式。
+- 除 Core 之外的命令，CLI stderr 与 MCP 返回值都会带上「RP9 未验证」提示，不允许被读成「已验证」。
 
 ## 测试与证据
 

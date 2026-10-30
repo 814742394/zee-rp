@@ -11,14 +11,20 @@ The repository contains the authored runtime source and all test code. Native do
 | `npm run test:parity` | Blank native template with page `Page 1`, record 4 | Historical 23-assertion CLI/direct-script parity and guards |
 | `npm run test:historical` | Exact external fixture pack and local native runtime | Historical 225 assertions, including native summary fingerprints and specialized semantic checks |
 | `npm run test:historical-mcp` | Same external fixture pack, `npm ci` | Historical 67 SDK/stdio assertions |
+| `npm run test:rp9` | `AXURE_RP9_SAMPLE`, `AXURE_RP9_LIBRARY`, and an RP9 blank template (or `AXURE_RP9_BLANK_PAGE` to derive one) | Axure RP 9 Core: edition detection, text edit, library clone, blank page, blank project, and every RP 9 rejection path. Offline only; asserts source bytes unchanged and output still RP 9. |
+| `npm run test:rp9-native` | `AXURE_RP9_NATIVE_SOURCE`, installed Axure RP 9, Accessibility + Automation permission | RP 9 native open → save → close → reopen, plus "edition verified" and "edition preserved". Missing permission or app is reported as a missing prerequisite, never as a pass. |
 
-Missing prerequisites cause a failure, not a passing skipped check. The public native recipe is tested against RP 11.0.0.4137 macOS libraries, with English library page names. Different library/build layouts may need a new validated recipe. Native-free CI does not claim native GUI coverage.
+Missing prerequisites cause a failure, not a passing skipped check. RP 9 native acceptance additionally requires macOS Accessibility/Automation permission: the helper drives the `File → Save` and `File → Close` menus through System Events, so a missing permission aborts with an explicit message instead of a false "RP 9 compatible" result. Step-by-step acceptance instructions, including the manual "open in RP 9, save, close, reopen" check, are in [rp9-acceptance-runbook.md](rp9-acceptance-runbook.md). The public native recipe is tested against RP 11.0.0.4137 macOS libraries, with English library page names. Different library/build layouts may need a new validated recipe. Native-free CI does not claim native GUI coverage.
 
 ## Environment
 
 | Variable | Purpose |
 | --- | --- |
-| `AXURE_BLANK_TEMPLATE` | User-saved single-page empty native project; fallback described in README |
+| `AXURE_BLANK_TEMPLATE` | User-saved single-page empty native project; fallback described in README. Must match the target file's edition |
+| `AXURE_BLANK_TEMPLATE_RP9` / `AXURE_BLANK_TEMPLATE_RP11` | Edition-specific blank template; takes precedence over `AXURE_BLANK_TEMPLATE` |
+| `AXURE_TARGET_EDITION` | `rp9`/`rp11` explicit target edition for `axvg paste` and for files whose edition cannot be read; recorded as a declaration, not as file evidence |
+| `AXURE_RP9_SAMPLE` / `AXURE_RP9_LIBRARY` / `AXURE_RP9_BLANK_PAGE` | RP 9 Core check inputs (project, `Default.rplib`, name of an empty page in the project for template derivation) |
+| `AXURE_RP9_NATIVE_SOURCE` | Input for the RP 9 native GUI roundtrip check |
 | `AXURE_LIBRARY_ROOT` | Directory containing the user's `Default.rplib` and other native libraries |
 | `AXURE_SETTINGS_ROOT` | Local Axure `DefaultSettings` directory; historical runtime checks read its `Prototype_Files/resources/scripts/axure/expr.js` |
 | `AXURE_FIXTURE_ROOT` | External historical fixture directory; defaults to ignored `test/fixtures` |

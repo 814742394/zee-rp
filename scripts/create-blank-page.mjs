@@ -6,7 +6,9 @@ import { readRecords, encodeRecord, replaceRecord, appendPackage } from './rp-re
 import { parsePayload, encodePayload, field, walkNodes } from './parse-payload.mjs';
 import { guidKey } from './duplicate-page.mjs';
 
-import { resolveBlankTemplate } from './blank-template.mjs';
+import { resolveBlankTemplate, inspectTemplate } from './blank-template.mjs';
+import { detectEdition, editionReport, UNKNOWN, EDITION_LABELS } from './rp-version.mjs';
+import { preflightCli } from './version-guard.mjs';
 
 function stringNode(strings, text) {
   let index = strings.indexOf(text);
@@ -29,6 +31,18 @@ export function createBlankPage(file, newName) {
   }
   if (typeof newName !== 'string' || !newName.trim()) throw new Error('Page name must not be empty');
 
+  // 目标版本必须与模板版本一致：RP9 工程只用 RP9 模板，跨版本素材在首期一律拒绝。
+  const detected = detectEdition(file);
+  if (detected.edition === UNKNOWN) {
+    throw new Error(`无法判定输入工程版本（${detected.evidence.join('；')}），拒绝写入空白页；请先用 documents 版本可识别的 RP9/RP11 工程，或设置 AXURE_TARGET_EDITION`);
+  }
+  const templatePath = resolveBlankTemplate(detected.edition);
+  const templateInfo = inspectTemplate(templatePath);
+  if (templateInfo.detected.edition !== detected.edition) {
+    throw new Error(`空白模板版本不符：${templatePath} 是 ${templateInfo.detected.label}，目标工程是 ${EDITION_LABELS[detected.edition]}`);
+  }
+  if (!templateInfo.blank) throw new Error(`空白模板 ${templatePath} 不再是单页空白工程：${templateInfo.problems.join('；')}`);
+
   const records = readRecords(file);
   const documentRecord = records.find(record => record.className === 'Axure:DesignDocument');
   if (!documentRecord) throw new Error('Axure DesignDocument record not found');
@@ -43,7 +57,7 @@ export function createBlankPage(file, newName) {
     throw new Error(`Page already exists: ${newName}`);
   }
 
-  const template = readFileSync(resolveBlankTemplate());
+  const template = readFileSync(templatePath);
   const blankPage = readRecords(template).find(record => record.className === 'Axure:Page');
   if (!blankPage) throw new Error('Native blank Page record not found in template');
   const page = parsePayload(blankPage);
@@ -117,7 +131,13 @@ export function createBlankPage(file, newName) {
   output = appendPackage(output, guidKey(newPackage), encodeRecord(blankPage, blankPage.strings, encodePayload(page.roots)));
   return {
     file: output,
-    report: { newName, template: 'Axure RP 11.0.0.4137 macOS native blank page', pages: existingNames.length + 1 }
+    report: {
+      newName,
+      template: templatePath,
+      templateEdition: templateInfo.detected.label,
+      edition: editionReport(detected),
+      pages: existingNames.length + 1
+    }
   };
 }
 
@@ -128,6 +148,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   if (extname(outputPath).toLowerCase() !== '.rp') throw new Error('Output path must end in .rp');
+  preflightCli('create-blank-page', process.argv.slice(2));
   const input = readFileSync(resolve(inputPath));
   const result = createBlankPage(input, newName);
   writeFileSync(resolve(outputPath), result.file, { flag: 'wx' });

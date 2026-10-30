@@ -14,6 +14,7 @@ import { readManifest, readRecords } from './rp-records.mjs';
 import { parsePayload, field, walkNodes } from './parse-payload.mjs';
 import { guidKey } from './duplicate-page.mjs';
 import { EVENTS } from './ix-actions.mjs';
+import { detectEdition, editionReport, EDITION_LABELS } from './rp-version.mjs';
 
 // wx.MSDataObject 的 DOAName 常量（实测值）。
 const DOA = { POSITION: 3221225573, SIZE: 3221225577 };
@@ -301,6 +302,8 @@ export function readRp(file, { full = false, path = null } = {}) {
 
   const records = readRecords(file);
   const manifest = readManifest(file);
+  // 版本以文件内容为准（BreakingChanges 主版本 + SavedEdition），不再写死 RP 11。
+  const detected = detectEdition(file, { records });
 
   // 每个记录只解析一次，缓存起来给后面所有查询用。
   const graphs = new Map();
@@ -345,7 +348,7 @@ export function readRp(file, { full = false, path = null } = {}) {
 
   // DesignDocument：PackageInfo 表 + 站点树 + 母版树 + 全局变量。
   const docRecord = records.find(r => r.className === 'Axure:DesignDocument');
-  if (!docRecord) throw new Error('No Axure:DesignDocument record — not a readable Axure RP 11 file');
+  if (!docRecord) throw new Error(`No Axure:DesignDocument record — not a readable Axure file（识别结果：${detected.label}）`);
   const docGraph = graphs.get(docRecord.index) ?? parsePayload(docRecord);
   const docRoot = docGraph.objects.get(docGraph.roots.find(n => n.tag === 0xf)?.value);
   if (!docRoot) throw new Error('DesignDocument root object is missing');
@@ -609,7 +612,9 @@ export function readRp(file, { full = false, path = null } = {}) {
 
   return {
     path,
-    format: 'Axure RP 11 .rp',
+    // format 保留旧字段以免破坏调用方；判定依据是文件内元数据，未知版本不会写成 RP 11。
+    format: detected.edition === 'unknown' ? 'Axure .rp（版本未知）' : `${EDITION_LABELS[detected.edition]} .rp`,
+    edition: editionReport(detected),
     bytes: file.length,
     dataStart: manifest.dataStart,
     records: {
@@ -653,6 +658,9 @@ const indent = (text, pad) => text.split('\n').map(line => pad + line).join('\n'
 export function formatRpSummary(rp, { full = false } = {}) {
   const lines = [];
   lines.push(`# ${rp.path ?? '(buffer)'}  （${humanBytes(rp.bytes)}，manifest dataStart=${rp.dataStart}）`);
+  const edition = rp.edition ?? { label: '未知版本', evidence: [] };
+  lines.push(`版本：${edition.label}${edition.version ? `（${edition.version}）` : ''}${edition.conflict ? '  ⚠️ 证据冲突' : ''}`
+    + `${edition.evidence?.length ? `  依据：${edition.evidence.join('；')}` : ''}`);
   lines.push(`记录 ${rp.records.total} 条（可解析 ${rp.records.parsed}${rp.records.xml.length ? `，XML：${rp.records.xml.join(', ')}` : ''}）、包 ${rp.counts.packages} 个`);
   lines.push('');
 

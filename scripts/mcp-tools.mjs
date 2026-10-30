@@ -11,6 +11,7 @@ import { parsePayload, field, walkNodes } from './parse-payload.mjs';
 import { setRecordWidgetText } from './set-widget-text.mjs';
 import { setWidgetRichText } from './set-widget-richtext.mjs';
 import { EVENTS } from './ix-actions.mjs';
+import { commandStatusFor } from './version-guard.mjs';
 
 const dump = spawnSync(process.execPath, [fileURLToPath(new URL('./registry.mjs', import.meta.url)), 'dump'], { encoding: 'utf8' });
 if (dump.status !== 0) throw new Error(dump.stderr || 'registry dump failed');
@@ -136,6 +137,8 @@ function runCommandTool(command, input) {
   if (command.command.startsWith('axvg ')) args = [command.command.split(' ')[1], ...args];
   const result = new AxureSession({ source }).run(command.command, args);
   const value = { exitCode: result.status, stdout: result.stdout.toString(), stderr: result.stderr.toString(), status: result.status === 0 ? 'completed' : 'failed' };
+  // 每次调用都回报「文件版本 + 该命令在这个版本上的状态」，避免把 RP11 的验收结论当成 RP9 的。
+  if (result.edition) value.edition = result.edition;
   if (result.status !== 0) {
     if (node && !/EEXIST|already exists/i.test(value.stderr) && pathExists(node)) value.rejected = rejectNode(node);
     value.usage = command.usage;
@@ -546,6 +549,7 @@ function overviewOf(state) {
   const rp = state.rp;
   return {
     opened: state.sourceFile,
+    edition: state.rp.edition,
     session: sessionSummary(state),
     pages: rp.pages.map(p => ({ name: p.name, record: p.record, widgets: p.counts.widgets, dynamicPanels: p.counts.dynamicPanels, interactions: p.counts.interactions, namedWidgets: p.counts.namedWidgets })),
     globalVariables: rp.globalVariables,
@@ -557,8 +561,14 @@ function overviewOf(state) {
 
 const targetOf = cand => `${cand.page ?? '(无页)'} 记录#${cand.record}/对象${cand.id}「${cand.name || '(未命名)'}」${cand.container.length ? `@${cand.container.join('/')}` : '（顶层）'}`;
 
+// 会话式编辑不经过 AxureSession.run，版本检查要在这里显式继承：
+// core → 正常；unverified → 结果里带提示；blocked → 在写任何文件之前抛错。
+const RP9_UNVERIFIED_NOTE = command => `「${command}」在 Axure RP 9 上未经验证（unverified）：结构检查通过不代表 RP9 能打开、预览或再次编辑。`;
+
 function textEdit(state, { target, text, richRuns }) {
   if ((text === undefined) === (richRuns === undefined)) throw new Error('每次编辑必须提供 text 或 richRuns 之一，不能同时提供。');
+  const editionStatus = commandStatusFor(state.rp.edition?.edition ?? 'unknown', richRuns === undefined ? 'set-widget-text' : 'set-widget-richtext');
+  if (editionStatus === 'blocked') throw new Error(`[版本拦截] 当前会话文件是 ${state.rp.edition?.label ?? '未知版本'}，不支持该编辑方式`);
   const cand = resolveTarget(state, target);
   const tail = state.chain.at(-1), node = nextWorkNode(state);
   assertNotProtected(tail); assertWritable(node);
@@ -578,7 +588,12 @@ function textEdit(state, { target, text, richRuns }) {
     if (created && pathExists(node)) error.message += `；失败节点保留 ${rejectNode(node)}`;
     throw error;
   } finally { releaseWorkNode(node); }
-  return { before: cand.fullText, after: report?.text ?? text, chainTail: node, previousTail: tail, ...(report ? { report } : {}) };
+  return {
+    before: cand.fullText, after: report?.text ?? text, chainTail: node, previousTail: tail,
+    edition: state.rp.edition, editionStatus,
+    ...(editionStatus === 'unverified' ? { warning: RP9_UNVERIFIED_NOTE(richRuns === undefined ? 'set-widget-text' : 'set-widget-richtext') } : {}),
+    ...(report ? { report } : {})
+  };
 }
 
 function editTexts(input) {
@@ -669,7 +684,7 @@ const sessionHandlers = {
   edit_text: editTexts,
   verify({ deep } = {}) {
     const state = refreshState(requireSession());
-    const base = { file: state.chain.at(-1), status: Object.values(zerosOf(state.rp)).some(Boolean) ? 'failed' : 'verified', structure: zerosOf(state.rp) };
+    const base = { file: state.chain.at(-1), edition: state.rp.edition, status: Object.values(zerosOf(state.rp)).some(Boolean) ? 'failed' : 'verified', structure: zerosOf(state.rp) };
     if (!deep) return base;
     return {
       ...base,

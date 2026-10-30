@@ -4,9 +4,9 @@
 
 | Command | Script | Purpose | Evidence |
 | --- | --- | --- | --- |
-| create-blank-project | create-blank-project.mjs | 复制用户本机的 RP 11 原生空白模板生成单页空白 .rp 工程 | loaded |
+| create-blank-project | create-blank-project.mjs | 按目标版本复制本机原生空白模板生成单页空白 .rp 工程（模板与目标版本必须一致） | loaded |
 | create-global-variable | create-global-variable.mjs | 创建具名全局变量及字符串默认值（离线结构级） | structure |
-| create-blank-page | create-blank-page.mjs | 把用户本机空白模板的 Page 记录追加到已有 .rp 生成新空白页 | gui-roundtrip |
+| create-blank-page | create-blank-page.mjs | 把同版本空白模板的 Page 记录追加到已有 .rp 生成新空白页（RP9 需 RP9 模板） | gui-roundtrip |
 | duplicate-page | duplicate-page.mjs | 按页名（或 --index 记录号）复制已有页面生成新页 | gui-roundtrip |
 | create-master | create-master.mjs | 复制已有 Axure:Master 记录并注册为新命名的母版 | preview |
 | place-master | place-master.mjs | 在指定页面上放置母版实例（ReferenceDiagramObject） | gui-roundtrip |
@@ -18,7 +18,7 @@
 | add-interaction | add-interaction.mjs | 向元件或页面追加事件+动作交互（支持 --replace-event、--on-page、--json 条件/多 Case；FCall 函数名按 18 项注册表白名单校验） | gui-roundtrip |
 | remove-interaction | remove-interaction.mjs | 按事件类型移除活动事件，或按 Case/Action 序号移除单个活动动作 | gui-roundtrip |
 | add-click-link | add-click-link.mjs | 给无交互的具名元件添加点击打开链接交互（capabilities.md 未列此工具，仅结构级） | structure |
-| clone-library-widget | clone-library-widget.mjs | 从 .rplib 克隆单个原生控件到目标 .rp 页面 | gui-roundtrip |
+| clone-library-widget | clone-library-widget.mjs | 从同版本 .rplib 克隆单个原生控件到目标 .rp 页面（跨版本素材拒绝） | gui-roundtrip |
 | clone-library-page-content | clone-library-page-content.mjs | 把 .rplib 库页的全部内容闭包导入目标 .rp 页面 | gui-roundtrip |
 | set-combobox-options | set-combobox-options.mjs | 设置唯一原生 ComboBox 的选项与选中项 | gui-roundtrip |
 | set-listbox-options | set-listbox-options.mjs | 设置唯一原生 ListBox 的选项、多选与选中索引 | gui-roundtrip |
@@ -38,7 +38,7 @@
 
 ## CLI arguments
 
-- **create-blank-project**: `node create-blank-project.mjs <output.rp>`
+- **create-blank-project**: `node create-blank-project.mjs <output.rp> [--edition rp9|rp11]`
 - **create-global-variable**: `node create-global-variable.mjs <source.rp> <output.rp> <VariableName> [--default-value "Value"]`
 - **create-blank-page**: `node create-blank-page.mjs <input.rp> <output.rp> <newPageName>`
 - **duplicate-page**: `node duplicate-page.mjs source.rp output.rp sourceName newName`
@@ -75,8 +75,8 @@
 | Script | Purpose | Evidence |
 | --- | --- | --- |
 | pack-release.mjs | 按代码与使用文档白名单生成新发布目录和 SHA 清单，排除研究、Axure 资源和 fixture | internal |
-| jobs.mjs | macOS GUI 保存关闭重开队列：wait:false 句柄、list/get/cancel，单服务内串行 | internal |
-| blank-template.mjs | 解析用户本机空白模板 AXURE_BLANK_TEMPLATE 或本机缓存；不分发 Axure 模板 | internal |
+| jobs.mjs | macOS GUI 保存关闭重开队列：按文件版本选择 RP9/RP11 应用并核验，wait:false 句柄、list/get/cancel，单服务内串行 | internal |
+| blank-template.mjs | 按版本解析/校验空白模板（AXURE_BLANK_TEMPLATE_RP9/_RP11、AXURE_BLANK_TEMPLATE、本机缓存），并可 derive 派生单页空白工程；不分发 Axure 模板 | internal |
 | mcp-tools.mjs | 注册表驱动的 MCP 工具 schema、参数校验和 CLI 参数映射，经 AxureSession 执行 | internal |
 | gen-capabilities.mjs | 由注册表和完整离线回归生成确定性命令文档，-o 输出新文件 | internal |
 | rp-records.mjs | .rp 记录流读写核心库（manifest/记录解析/替换/插入/追加），无 CLI 入口 | internal |
@@ -85,6 +85,9 @@
 | ix-actions.mjs | 交互构造核心库（45 事件枚举 + 全部动作分支序列化器），无 CLI 入口 | internal |
 | expr-schema.mjs | 一次性研究工具：扫描本机 .rplib 提取条件表达式语法统计（顶层直接执行，按任务指定归入库清单） | internal |
 | widget-schema.mjs | 一次性研究工具：扫描本机 .rplib 提取各元件类型字段清单统计（顶层直接执行，按任务指定归入库清单） | internal |
+| rp-fingerprint.mjs | 结构指纹：容器头/manifest/记录类名/对象类名与版本证据，用于 RP9 与 RP11 样本对比留证（不含文档正文） | internal |
+| rp-version.mjs | 版本识别库：按 BreakingChanges 主版本与 DesignDocument.SavedEdition 判定 rp9/rp11/unknown，无 CLI 入口 | internal |
+| version-guard.mjs | 版本能力检查库（CLI/MCP/直接脚本共用）：命令支持矩阵、apply-style 等 RP9 禁用动作、跨版本模板与元件库拦截 | internal |
 | engine.mjs | 编排引擎库（AxureSession 按注册表分发、受保护成品红线与 AXURE_WRITE_ROOT 白名单），spawn 透传存量脚本，无 CLI 入口 | internal |
 
 Core checks: `npm test`. Local native integration: `npm run test:native`. Optional MCP integration: `npm run test:mcp`. Historical fixture replay: `npm run test:historical` with your external, hash-matching fixture pack. Native assets are never bundled.

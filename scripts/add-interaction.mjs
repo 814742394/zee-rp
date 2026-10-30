@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { addInteractions, EVENTS } from './ix-actions.mjs';
+import { preflightCli } from './version-guard.mjs';
 
 function parseArgs(argv) {
   const positional = [];
@@ -81,6 +82,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   const finalTarget = page ? { page: target } : (onPage ? { widget: target, page: onPage } : target);
+  preflightCli('add-interaction', argv);
   const out = addInteractions(readFileSync(src), finalTarget, interactions, { replaceEvent });
   writeFileSync(dst, out.file, { flag: 'wx' });
   console.log(JSON.stringify(out.report, null, 2));

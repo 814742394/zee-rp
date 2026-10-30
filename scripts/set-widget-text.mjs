@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { readRecords, encodeRecord, replaceRecord } from './rp-records.mjs';
 import { parsePayload, encodePayload, field, walkNodes } from './parse-payload.mjs';
 import { readRp } from './rp-read.mjs';
+import { preflightCli } from './version-guard.mjs';
 
 const textBlockOf = (graph, widget) => {
   let block = field(widget.body, 'RichTextBlock') ?? field(widget.body, 'TextBlock');
@@ -109,6 +110,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error('   or: node set-widget-text.mjs <source.rp> <output.rp> --record <recordIndex> --container <path> --widget-name <name> [--run <zeroBasedRunIndex>] <text>');
     process.exit(1);
   }
+  preflightCli('set-widget-text', process.argv.slice(2));
   if (args[0] === '--record' && args[2] === '--container') {
     const [ , recordIndex, , containerPath, nameFlag, widgetName, ...rest] = args;
     const runFlagIndex = rest.indexOf('--run');

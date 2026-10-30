@@ -2,9 +2,11 @@
 
 [简体中文](README.zh-CN.md) · [Command reference](references/commands-generated.md) · [Capability boundaries](references/capabilities.md) · [Validation](docs/validation.md)
 
-**Read, inspect, and edit supported Axure RP 11 prototypes from scripts or an AI assistant.**
+**Read, inspect, and edit supported Axure RP 11 prototypes from scripts or an AI assistant — with an explicit, narrower Axure RP 9 path.**
 
 zee-rp is an independent, MIT-licensed toolkit for native `.rp` documents. It includes a binary record codec, object-reference handling, native template cloning, interaction writers, rich text, tables, and an optional Model Context Protocol (MCP) server. The public interface contains **31 CLI commands and 43 MCP tools**.
+
+Every call now reports the file's edition, detected from in-file metadata rather than the filename. On Axure RP 9, five commands are declared Core (`rp-read`, `set-widget-text`, `clone-library-widget`, `create-blank-project`, `create-blank-page`); the rest run only with an explicit "unverified on RP 9" notice, and `apply-style` plus `axvg paste` are rejected before any file is written. See the [RP 9 capability matrix](docs/rp9-capabilities.md), the [RP 9 baseline report](docs/rp9-baseline.md), and [how to run the RP 9 checks](docs/validation.md).
 
 Use it to understand an existing prototype, apply repeatable changes, build from your own native templates, or let an MCP client work through a sequence of inspected and verified edits. The native workflow reads and writes `.rp` files; the separate Axvg workflow compiles a layout specification for pasting into a running Axure canvas.
 
@@ -27,6 +29,7 @@ This image is a deterministic **reference rendering**, not an Axure screenshot o
 - [Compile a static layout with Axvg](#compile-a-static-layout-with-axvg)
 - [Connect an MCP client](#connect-an-mcp-client)
 - [How the implementation fits together](#how-the-implementation-fits-together)
+- [Axure RP 9](#axure-rp-9)
 - [Tests and evidence](#tests-and-evidence)
 - [Troubleshooting](#troubleshooting)
 - [Open-source contents and releases](#open-source-contents-and-releases)
@@ -448,6 +451,31 @@ The record codec reads and rebuilds native records. The payload parser represent
 | [scripts/pack-release.mjs](scripts/pack-release.mjs) | Complete public release selection and SHA-256 manifest |
 
 For a new contributor or AI assistant, start with this README, then the [capability boundaries](references/capabilities.md) and [generated commands](references/commands-generated.md). Read the relevant workflow reference before changing a writer. Consult implementation and tests for the exact contract; historical notes explain specific earlier samples rather than a universal guarantee.
+
+## Axure RP 9
+
+RP 9 is supported through a capability matrix, not by assuming the RP 11 behaviour carries over.
+
+```bash
+# What does this file say it is? (reads xml:BreakingChanges + DesignDocument.SavedEdition)
+node bin/axure.mjs rp-read my.rp | head -2
+
+# RP 9 Core, offline: text edit, library clone, blank page, blank project, rejections
+AXURE_RP9_SAMPLE=/path/to/rp9.rp AXURE_RP9_BLANK_PAGE="Page 2" npm run test:rp9
+
+# Derive a single-page RP 9 blank project from an existing RP 9 project
+node scripts/blank-template.mjs derive my.rp "Page 2" "$HOME/Library/Application Support/zee-rp/templates/axure-rp9-blank.rp"
+
+# Native acceptance (needs Axure RP 9 + Accessibility/Automation permission)
+AXURE_RP9_NATIVE_SOURCE=/path/to/output.rp npm run test:rp9-native
+```
+
+Rules that are enforced before any output is written:
+
+- An unreadable edition refuses version-sensitive writes, and an unknown edition is never reported as RP 11.
+- A target project and every imported `.rplib`/blank template must share the same edition.
+- `apply-style` and `axvg paste` are rejected on RP 9: the first makes RP 9 refuse the whole file (`Unrecognized Type: Axure:InteractionApplyStyleInfo`), the second uses the RP 11 clipboard format.
+- Anything not listed as Core is returned with an explicit `unverified on RP 9` notice, in both CLI stderr and MCP results.
 
 ## Tests and evidence
 

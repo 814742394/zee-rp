@@ -13,6 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getCommand, listCommands } from './registry.mjs';
+import { preflight } from './version-guard.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -139,6 +140,8 @@ export class AxureSession {
     for (const a of args) assertNotProtected(a);
     const output = locateOutput(command, args);
     if (output !== null) this.saveAs(output); // 白名单只约束输出；输入只查红线。
+    // 版本能力检查（阶段1）：CLI 与 MCP 都经过这里，拒绝发生在子进程写出任何文件之前。
+    const guard = preflight({ command: commandName, args });
 
     // 透传执行：node + 脚本绝对路径 + 原样参数，不经 shell、不改写任何参数。
     const child = spawnSync(process.execPath, [join(SCRIPTS_DIR, command.script), ...args], {
@@ -146,6 +149,12 @@ export class AxureSession {
       maxBuffer: 64 * 1024 * 1024,
     });
     if (child.error) throw child.error;
-    return { status: child.status, stdout: child.stdout, stderr: child.stderr };
+    const warnings = guard.warnings.map(text => `[版本提示] ${text}\n`).join('');
+    return {
+      status: child.status,
+      stdout: child.stdout,
+      stderr: warnings ? Buffer.concat([Buffer.from(warnings), child.stderr]) : child.stderr,
+      edition: { edition: guard.edition, label: guard.label, status: guard.status, files: guard.files, warnings: guard.warnings },
+    };
   }
 }
