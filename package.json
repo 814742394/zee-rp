@@ -14,6 +14,8 @@
   },
   "scripts": {
     "test": "node test/regression.mjs",
+    "test:rp9": "node test/rp9-core-check.mjs",
+    "test:rp9-native": "node test/rp9-native-check.mjs",
     "test:native": "node test/native-check.mjs",
     "test:parity": "node test/parity-check.mjs",
     "test:mcp": "node test/mcp-check.mjs",

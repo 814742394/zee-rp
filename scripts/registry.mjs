@@ -320,6 +320,16 @@ const LIB_SCRIPTS = [
     "evidence": "structure"
   },
   {
+    "script": "version-guard.mjs",
+    "summary": "版本能力门禁（CLI/MCP/直接脚本共用）：跨版本组合拒绝、RP9 命令分级放行、版本敏感素材同版本校验、apply-style 与 axvg paste 前置拦截",
+    "evidence": "structure"
+  },
+  {
+    "script": "rp-fingerprint.mjs",
+    "summary": "结构指纹：容器头/manifest/记录类名/对象类名与版本证据，用于 RP9 与 RP11 样本对比留证（不含文档正文）",
+    "evidence": "structure"
+  },
+  {
     "script": "version-fields.mjs",
     "summary": "RP 9 / RP 11 动作与信息对象的字段差异表（由两版自带原生样本实测键集派生）",
     "evidence": "structure"

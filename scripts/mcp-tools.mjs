@@ -160,6 +160,8 @@ function runCommandTool(command, input) {
         .filter(ln => ln && !/^at\s+/.test(ln) && !ln.includes('file://') && !/^\^+$/.test(ln) && !/^Node\.js\s+v/i.test(ln))
         .join('\n') || rawStderr.trim());
   const value = { exitCode: result.status, stdout: result.stdout.toString(), stderr: result.status === 0 ? rawStderr : cleanStderr, status: result.status === 0 ? 'completed' : 'failed' };
+  // 每次调用都回报「文件版本 + 该命令在这个版本上的状态」，避免把 RP11 的验收结论当成 RP9 的。
+  if (result.version) value.version = result.version;
   if (result.status !== 0) {
     if (node && !/EEXIST|already exists/i.test(rawStderr) && pathExists(node)) value.rejected = rejectNode(node);
     const errCode = /EEXIST|already exists/i.test(rawStderr) ? 'E_OUTPUT_EXISTS' : 'E_TOOL_INPUT';
