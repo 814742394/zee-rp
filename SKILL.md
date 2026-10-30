@@ -11,11 +11,16 @@ description: Reconstruct screenshots as editable Axure layouts, compile RP/1 spe
 
 ## 一、标准 3 步极速闭环（生成 → 单图联审 → 增量改稿）
 
+0. **先确认环境**（缺了会在生成阶段才崩，白等一轮）：`python3 -c "import PIL, numpy"`。
+   不过就 `python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`；
+   MCP 侧还要在客户端的 `env:` 注入 `PATH: <repo>/.venv/bin:...`。见 [故障排查](references/troubleshooting.md)。
+
 1. **生成原型**：编写 `.rp1` 源码（或直接选内置范例 `recipe: "mobile-cards" | "list-detail" | "step-form"`），调用 MCP `generate_prototype`：
    ```json
    {"source": "/abs/path/app.rp1", "output": "/abs/path/app.rp", "strictAudit": true}
    ```
    - 默认 `autoHeal: false`，与 CLI 一致；显式传 `true` 时尝试自愈，完整重验后回退引入新错误的变更，审计记录属性清单与回退原因，并产出 `<output>.baseline.json`。
+   - **迭代节拍**：改源码后先跑 `python3 scripts/proto.py check <spec>`（约 0.3 秒，覆盖语法/布局/引用/作用域），全绿再 `generate`（约 15 秒）。`check` 已含布局审计（容器溢出、文字裁切、缺字、令牌合规），不要用 `generate` 当语法检查器。
 2. **单图全景视觉联审（1 次看图审完全局）**：
    - 直接用 `read_file` 读取返回结果 `previews` 同目录下的 **`pages-sheet.png`**（或顶层 `contactSheet` 字段，全页面横向拼图）与 **`states-sheet.png`**（或顶层 `statesSheet` 字段，过滤内部合成态后的纯净动态面板状态拼图），无需逐页翻看单张 `01-*.png`。
 3. **增量改稿（属性修改 + 结构级增删节点 + 跨面板深层定位）**：调用 MCP `revise_prototype`（保留原文件，输出新文件名或设 `"output": "auto"` 自动递增 `-v2.rp`）：
@@ -44,6 +49,8 @@ description: Reconstruct screenshots as editable Axure layouts, compile RP/1 spe
 
 - **尺寸铁律**：纵向容器、卡片、多行文本、动态面板、中继器一律写 **`[fillxhug]`**（宽铺满、高按内容自动测量；`panel` 自动取最高 `:state` 高度），按钮/输入框写 **`[fillx44]`** 或 **`[120x44]`**。节点 ID 前的 `#` 可写可省略。
 - **属性边界与零静默丢参约定**：`fontSize` 范围为 `(0,72]`（含字号简写与 spans），`letterSpacing` 非负；`after` 必须引用同容器中的另一个节点，不存在会报 `E_REFERENCE`。未知属性、未知宏插槽名（`slots`）、`progress-bar` 同时声明 `percent` 与 `value`、以及对非 `enum` 字段声明 `filters: "auto"` 均返回 `E_PROPERTY` 错误，任何无法生效的声明或守卫（如 `wizard-card` 的 `nextWhen`）绝不静默丢弃。
+- **列表条目一律用 `:item` 行，不要写 `items=[{...}]`**：`kv-list` / `detail-card` 写内联 JSON 会报 `Unknown property 'children'`（`candidatePatches` 建议改名为 `hidden` 是误导，别照做）。`stat-row` 的 `items=[...]` 合法，但为一致性和少踩坑，**统一用 `:item` 缩进行**；`data-table` 用 `:col`、`form-card` 用 `:field`、`searchable-list` 用 `:template`/`:filters`。详见 [故障排查](references/troubleshooting.md)。
+- **手机页高度预算**：`iphone-17` 内容区可用 ≈642px（`y=142`→`y=784`）。写完先用 `check`（0.3 秒）验溢出，不要直接 `generate`。反方向：内容太少会因留白率 >88% 被 `strictAudit` 拦，别交只有一两个元件的空页。
 - **设备画布**：页面声明 `device=iphone-17`（或顶层声明 `device="iphone-17"`）即可自动匹配 `402×874` 屏幕与 `442×914` 钛金属外壳，**推荐省略页面 `[WxH]`**。
 - **合规设计令牌（`strictAudit: true` 零警告值）**：
   - 间距 `gap` / `padding`：`0, 4, 6, 8, 10, 12, 16, 20, 24, 28, 32, 40, 48`

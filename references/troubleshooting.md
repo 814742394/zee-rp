@@ -2,10 +2,160 @@
 
 按症状定位。历史现象来自 macOS / Axure RP 11 的实验；其他版本以当前观察为准。
 
+## MCP `generate_prototype` 报 `No module named 'PIL'`（本机 2026-10-30 实测）
+
+**症状**：MCP 调用 `generate_prototype` 在 compile 阶段直接崩：
+
+```
+[ERR_COMPILE] proto.py compile ... failed (exit=1)
+ModuleNotFoundError: No module named 'PIL'
+```
+
+**原因**：`proto.py` 第 26 行 `from PIL import Image, ...`。compile/generate/audit/截图重建全部依赖 Pillow
++ numpy + scipy。MCP 服务用**裸 `python3`** 起子进程（`scripts/*.mjs` 共 18 处 `spawnSync('python3', ...)`），
+**没有独立的解释器环境变量**，只能靠 `PATH` 解析。客户端注入的 MCP `env` 若不含带 PIL 的 Python，必然踩坑。
+`rp_read`/`verify` 这类只读工具不受影响（不走 Python），所以容易误判成"服务坏了"。
+
+**修复（推荐，一次性）**。下面 `<repo>` 指 zee-rp 检出目录：
+
+```bash
+cd <repo>
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+然后让 MCP 服务用上它。两种做法：
+
+1. **改 MCP 配置**（推荐）：在客户端的 MCP `env:` 段加一行 PATH，venv 置顶：
+
+   ```json
+   {
+     "mcpServers": {
+       "zee-rp": {
+         "command": "node",
+         "args": ["/absolute/path/zee-rp/bin/mcp.mjs"],
+         "env": {
+           "PATH": "/absolute/path/zee-rp/.venv/bin:/usr/local/bin:/usr/bin:/bin",
+           "AXURE_BLANK_TEMPLATE_RP9": "/absolute/path/my-rp9-blank.rp"
+         }
+       }
+     }
+   }
+   ```
+
+   改完重连服务。`runtime_info` 的 `python.imageModules` 应显示 `PIL/numpy/scipy: true`。
+   （DeepSeek Harness 的接入脚本 `dsh-setup/install.sh` 已内置这段检测与注入，重跑一次即可；
+   其他客户端照上面的 JSON 手工加。）
+2. **CLI 兜底**（不重连服务）：命令前加 PATH 前缀，并补上模板变量，否则会报缺 RP9 空白模板：
+
+   ```bash
+   cd <repo>
+   PATH="$PWD/.venv/bin:$PATH" \
+   AXURE_BLANK_TEMPLATE_RP9=/absolute/path/my-rp9-blank.rp \
+   node scripts/proto.mjs generate --spec X.rp1 --out-dir D --out-rp O.rp --strict-audit --backend native
+   ```
+
+   MCP 侧同一份源码用 `generate_prototype`；CLI 侧用上面这条，产物等价。
+
+**判别**：`python3 -c "import PIL, numpy"` 能过就没这个问题。`runtime_info` 的
+`missingImageDependencies` 非空即是此坑。另注：homebrew Python 受 PEP 668 保护，
+`pip install` 会拒绝，必须用 venv（或 `--break-system-packages`）。
+
+## 缺 Axure RP 9 空白工程模板
+
+**症状**：CLI `generate` / `build-rp` 报「缺少 Axure RP 9 的空白工程模板」，列出
+`default: ~/Library/Application Support/zee-axure/templates/axure-rp9-blank.rp（不存在）`
+及两个 tmp fallback。
+
+**原因**：`AXURE_BLANK_TEMPLATE_RP9` 未设置（MCP 侧由客户端注入，通常没问题；
+**CLI 手动跑时必须自己给**）。
+
+**修复**：`export AXURE_BLANK_TEMPLATE_RP9=/absolute/path/my-rp9-blank.rp`。
+缺模板时用 `create-blank-project --version 9` 从 Axure 保存一份单页空白工程。
+
 ## 手机原型布局与 RP/1
 
 设备壳、屏幕坐标、`[WxH]`、字距测宽、段落居中、面板共享高度、字体与动画边界，
 先查 [手机布局速查与故障表](mobile-layout.md)。
+
+## `.rp1` 里写 `items=[{...}]` 报 `Unknown property 'children'`
+
+**症状**：`kv-list` / `detail-card` 的条目写成一行内联 JSON：
+
+```text
+kv-list #info [fillxhug]
+  items=[{"id":"r1","label":"内核","value":"RN 0.76"}]
+```
+
+报 `E_PROPERTY: Unknown property 'children'`，`candidatePatches` 还建议把 `items=[...]`
+改名叫 `hidden`——那是误导，别照做。
+
+**原因**：`.rp1` DSL 的节点头只认 `key=value`、`[WxH]`、`"text"`、`#id` 四种 token。
+`items=[...]` 里的 `{`/`}`/`[`/`]` 让它无法解析成 KV，整行退化成"下一个子节点的声明"，
+于是那行被当成 `children` 传进宏，触发 E_PROPERTY。
+
+**修复**：改用缩进的 `:item` 行，每行一条，`label=`/`value=` 都是普通字符串：
+
+```text
+kv-list #info [fillxhug] labelWidth=88 fontSize=12 gap=0 padding=16 radius=16
+  :item id=r1 label="内核版本" value="React Native 0.76"
+  :item id=r2 label="发布渠道" value="App Store 正式版"
+```
+
+注意 `stat-row` 两种写法都合法（`items=[...]` 与 `:item` 均验过），只有
+`kv-list` / `detail-card` 的 `:item` 是可靠的；不确定时一律用 `:item`。
+`data-table` 用 `:col`、`form-card` 用 `:field`，同理。
+
+## 内容超出手机屏幕：`no_container_overflow`
+
+**症状**：`strictAudit` 报
+
+```
+{"gate": "no_container_overflow", "overflow": {"bottom": 279}, "detail": "子元件超出父容器边界 >2px"}
+```
+
+**原因**：`iphone-17` 屏幕 402×874，`phone-shell` 的 padding 是 `[14,16,20,16]`，
+扣除状态栏/标题栏/Tab 栏后，**内容区可用高度约 642px**（实测 `body_wrap` 起点 `y=142`，
+终点 `y=784`）。堆太多卡片必溢出。这是 RP/1 布局里最常见的失败，且**报错只告诉你溢出了多少，不告诉你哪一块该砍**。
+
+**修复**：先按下面的高度预算估算，再动手；不要靠"编译→看溢出→改"循环（一次约 15 秒，
+三次就 45 秒，还容易把字号缩到不合规）。
+
+### 402×874 屏幕高度预算（2026-10-30 实测）
+
+固定占用（有 `subtitle` + `tabBar` 时）：状态栏 28 + 标题栏（含副标题 72）+ Tab 栏 56 ≈ **156px**，
+`phone-shell` 的 `gap` 另算。**内容区起点 `y≈142`，终点 `y≈784`，可用 ≈642px**。
+
+各区块实测高度（`[fillxhug]`，`padding=14/16`，`gap=12` 时）：
+
+| 区块 | 实测高 | 说明 |
+|---|---|---|
+| 应用标识卡（72 图标 + 名称 + 版本 + 口号） | 190 | `padding=14 gap=8`；口号一行 `[fillx20]` |
+| `list-item` 带副标题 | 63 | 外框 71（含 padding 4） |
+| `list-item` 无副标题 | 44 | 外框 52 |
+| 4 项目录 + 3 条分割线 | 219 | `[fillx52]` 固定高时；`[fillxhug]` 时约 227 |
+| 法律信息卡（标题 + 3 段） | 128 | `padding=14 gap=6`，段落 `lineHeight=18` |
+| 版权两行 label | 32 | `lineHeight=16` |
+
+**经验值**：一个典型「关于」页 ≈ 标识 190 + 目录 219 + 法律 128 + 版权 32 + 3×gap(12) = **605px**，
+落在 642 内，留约 37px 余量。要再加区块，先减 `gap` 或砍目录项，别动字号。
+
+**快捷判断**：写 `[fillx52]` 这类固定高时，按上表累加即可；写 `[fillxhug]` 时按
+"内容行高 + 上下 padding"估。仍不确定就跑一次 `check`（实测 **0.34 秒**，比 `generate` 快 40 倍以上）：
+
+```bash
+python3 scripts/proto.py check your.rp1   # 布局审计在 check 阶段就报溢出
+```
+
+`check` 的溢出报错容器是 `grp-shell-*`（`containerBox` 即整屏 402×874），
+`generate`/`strictAudit` 的容器是 `grp-shell_body_wrap-*`（只到内容区），
+两者的 `overflow.bottom` 数值不同，但都指向同一个根因：内容总高超了。
+
+### 反向陷阱：内容太少也会被拦
+
+`strictAudit` 同时检查**留白率**，手机页要求 `whitespace_ratio_pct ∈ [12, 88]`。
+只放一个 label 的空页实测 **94.06%** → `whitespace_ok: fail`。
+所以"先做个最小页试试"这条路在 strictAudit 下走不通，**至少要有 2-3 个内容区块**。
 
 ## 粘贴后 Axure 无变化（无报错、大纲无新元件）
 

@@ -4,10 +4,23 @@
 手机创作先读 [手机布局速查](mobile-layout.md)：设备壳自动添加、坐标按屏幕原点、`[fillx180]` 为宽 fill/高 180。
 可直接生成 [mobile-layout.rp1](../examples/rp-language/mobile-layout.rp1)，无需手画机身。
 
+## 动手前 30 秒：三个高频坑
+
+这三条各踩一次就是 3 轮编译（每轮 15 秒），且都不体现在语法文档里。详见 [故障排查](troubleshooting.md)。
+
+1. **环境**：`python3 -c "import PIL, numpy"` 不过 → `generate` 必崩。先建 venv：
+   `python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`。
+   MCP 侧还需在 DSH 的 `env:` 里注入 `PATH: <repo>/.venv/bin:...`。
+2. **`.rp1` 的列表条目**：`kv-list` / `detail-card` **不能**写 `items=[{...}]`（会报
+   `Unknown property 'children'`，补丁建议是误导）。一律用缩进 `:item` 行。
+   `data-table` 用 `:col`、`form-card` 用 `:field`、`searchable-list` 用 `:template`/`:filters`。
+3. **手机页高度预算**：`iphone-17` 内容区可用 ≈642px（`y=142`→`y=784`）。写之前先按区块累加，
+   别等 `strictAudit` 报 `no_container_overflow`。反方向注意：内容太少会因留白率 >88% 被拦。
+
 ## 从哪里开始
 
 ```sh
-node scripts/proto.mjs check --spec source.json
+node scripts/proto.mjs check --spec source.json          # 0.3 秒；先跑这个，语法/布局/作用域全查
 node scripts/proto.mjs generate --spec source.json --out-dir bundle --out-rp prototype.rp
 node scripts/proto.mjs inspect --spec source.json
 node scripts/proto.mjs explain --spec source.json --target home/status
@@ -16,6 +29,10 @@ node scripts/proto.mjs complete --spec source.json --pointer /pages/0/root
 ```
 
 命令中的 `scripts/` 相对于 Skill 根目录 `<local-path>`。输出使用新路径，已有 `.rp` 和源码不会被覆盖。`explore` 是有预算的参考执行，宿主行为须另外验证。
+
+**迭代节拍**：改源码 → `check`（0.3 秒，报语法/布局/引用）→ 全绿才 `generate`（15 秒）。
+`check` 就已经包含布局审计（容器溢出、文字裁切、缺字、间距/字阶令牌合规），
+不要用 `generate` 当语法检查器。
 
 ## 最小可运行源码
 
