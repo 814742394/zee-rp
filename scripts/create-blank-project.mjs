@@ -19,6 +19,10 @@ export function createBlankProject(outputPath, { version = DEFAULT_VERSION, temp
   const templateBytes = readFileSync(TEMPLATE);
   const summary = readRp(templateBytes, { path: TEMPLATE });
   const records = readRecords(templateBytes);
+  for (const record of records.filter(record => record.strings)) {
+    const recordVersion = record.raw.readUInt32LE(4);
+    if (recordVersion !== target) throw Object.assign(new Error(`模板中的 ${record.className} 使用 RP${recordVersion} 序列化，但目标是 RP${target}；请在目标版本中打开页面并保存原生空白工程。`), { code: 'E_TEMPLATE_RECORD_VERSION' });
+  }
   const page = records.find(record => record.index === summary.pages[0]?.record && record.className === 'Axure:Page');
   const graph = page && parsePayload(page);
   const pageObject = graph && [...graph.objects.values()].find(object => object.className === 'Axure:Page');

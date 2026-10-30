@@ -116,12 +116,16 @@ do {
         }
         try focusTarget()
     }
+    func normalizedMenuTitle(_ title: String) -> String {
+        title.replacingOccurrences(of: "\\([A-Za-z]\\)(?=(?:\\.\\.\\.|…)?$)", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "...", with: "").replacingOccurrences(of: "…", with: "")
+    }
     func axPressMenu(_ menuNames: [String], _ itemNames: [String]) -> Bool {
         guard let bar = axAttr(axApp, kAXMenuBarAttribute as String) else { return false }
         let barEl = bar as! AXUIElement
-        for m in axChildren(barEl) where menuNames.contains(axTitle(m)) {
+        for m in axChildren(barEl) where menuNames.map(normalizedMenuTitle).contains(normalizedMenuTitle(axTitle(m))) {
             for sub in axChildren(m) {
-                for item in axChildren(sub) where itemNames.contains(axTitle(item)) {
+                for item in axChildren(sub) where itemNames.map(normalizedMenuTitle).contains(normalizedMenuTitle(axTitle(item))) {
                     return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
                 }
             }

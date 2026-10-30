@@ -241,6 +241,7 @@ export function addInteractions(file, target, interactions, { replaceEvent = fal
   }
 
   const { kind, r, graph, widget, pageObj } = matches[0];
+  if (r.raw.readUInt32LE(4) !== targetVersion) throw Object.assign(new Error('目标页的记录版本与工程版本不同，请先在目标 Axure 中打开该页面并保存；拒绝混写交互编码。'), { code: 'E_RECORD_VERSION_MISMATCH' });
   const strings = [...r.strings];
   const guidNode = graph.roots.find(n => n.tag === 0x1e);
   if (!guidNode) throw new Error('Record has no GUID list root');

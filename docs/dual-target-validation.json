@@ -1,5 +1,5 @@
 {
-  "status": "incomplete-native-acceptance",
+  "status": "partial-native-acceptance",
   "date": "2026-10-30",
   "system": "macOS-27.0-arm64-arm-64bit-Mach-O",
   "apps": {
@@ -25,26 +25,68 @@
   },
   "native": {
     "9": {
-      "open": false,
-      "preview": false,
+      "open": true,
+      "preview": true,
       "edit": false,
-      "saveReopen": false
+      "saveReopen": true,
+      "behaviorChecks": {
+        "setText": true,
+        "enable": true,
+        "disable": true,
+        "hide": true,
+        "show": true,
+        "pageLinks": true,
+        "variableTransfer": true,
+        "passwordInputRecognized": true
+      },
+      "saveReopenScope": "原工程级保存重开已通过；不得替代页面加载与交互验证",
+      "editScope": "未验证",
+      "templateSha256": "e2b7256c485135817dcac93f9d53732407026929ea0c815a69380cafc93b50ea",
+      "sampleSha256": "d47a377ce7af87d59800b38ad4031c9f763aabca320ec73647335e7c0d3abb38"
     },
     "11": {
-      "open": false,
-      "preview": false,
-      "edit": false,
-      "saveReopen": false
+      "open": true,
+      "preview": true,
+      "edit": true,
+      "saveReopen": true,
+      "behaviorChecks": {
+        "setText": true,
+        "enable": true,
+        "disable": true,
+        "hide": true,
+        "show": true,
+        "pageLinks": true,
+        "variableTransfer": true,
+        "passwordInputRecognized": true
+      },
+      "saveReopenScope": "原工程级保存重开已通过；不得替代页面加载与交互验证",
+      "editScope": "RP11 页面改名后保存、关闭、重开，名称保留",
+      "templateSha256": "2d18e3b9e13475103e08e68afd06a77264ec9c7fa131758672c6874fe9c789a2",
+      "sampleSha256": "bb5ad593fc12b8f7446e9c2a257c300939b137361331d44265550668fd5f4947"
     }
   },
-  "blockers": [
-    "System Events keystroke denied (1002)",
-    "AX menu probe returned NO_MENUBAR",
-    "RP11 offline template was trimmed from local sample, not native-accepted"
-  ],
+  "blockers": [],
   "samples": {
     "basic-9.rp": "135af939ecc65ca36e386386a7cd3734d62df908afae987ae51589f3a0640ee1",
     "basic-11.rp": "8e0ec437ef329e71d905e30e406bf68277d7a60ac90f8db35c8714ac2cf90c77",
     "async-11.rp": "33bc72379f891bc0c339cd2521d373ed0edd0bc04ec3d9ae5e1f00838dd260a2"
-  }
+  },
+  "nativeFindings": {
+    "mixedTemplate": {
+      "reproduced": true,
+      "symptom": "RP11 页面打开时 EnableDisableWidgetsInfo InvalidCastException",
+      "cause": "容器版本 11，但 Page 记录序列化版本为 9",
+      "mitigation": "新建模板验证所有二进制记录版本；交互写入拒绝目标记录版本不一致",
+      "oldTemplateEvidenceSuperseded": true
+    },
+    "permissions": {
+      "accessibility": true,
+      "screenRecording": true
+    },
+    "remaining": [
+      "RP9 原生编辑后重开（当前 RP9 前台已有其他工作文档，未继续操作）",
+      "元件文字与位置的原生编辑后重开；目前 RP11 只验证页面改名持久化"
+    ]
+  },
+  "evidenceDirectory": "work/native-acceptance-ar73ie (local; native files not distributed)"
 }
