@@ -11,7 +11,10 @@
       "const": "rp/1"
     },
     "target": {
-      "const": 9
+      "enum": [
+        9,
+        11
+      ]
     },
     "name": {
       "type": "string"
@@ -10000,6 +10003,12 @@
                   "$ref": "#/$defs/compileExpression"
                 }
               ]
+            },
+            "inputType": {
+              "enum": [
+                "text",
+                "password"
+              ]
             }
           },
           "required": [
@@ -10596,6 +10605,12 @@
             "input": {
               "type": "string",
               "pattern": "^[A-Za-z_][A-Za-z0-9_-]*$"
+            },
+            "inputType": {
+              "enum": [
+                "text",
+                "password"
+              ]
             }
           },
           "required": [

@@ -1,3 +1,5 @@
+> Dual-target update: basic RP9/RP11 file generation is implemented; native acceptance is pending. See [architecture and migration](docs/dual-target-architecture.md).
+
 <div align="center">
 
 <img src="assets/readme/hero.svg" alt="zee-rp — Describe. Compile. Keep editing." width="100%">

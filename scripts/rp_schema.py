@@ -78,6 +78,7 @@ def language_schema():
         "additionalProperties": False,
     }
     special = {
+        "inputType": {"enum": ["text", "password"]},
         "activeIndicator": enum_expr(["none", "underline", "dot"]),
         "activeVariant": enum_expr(["primary", "brand", "secondary", "outline", "ghost", "soft", "danger", "success", "warning", "error"]),
         "itemFlex": numeric,
@@ -400,7 +401,7 @@ def language_schema():
         "operations": {"type": "object", "propertyNames": ident, "additionalProperties": product_operation},
         "views": array(product_view_spec, 1),
     }, ["entities"])
-    result = obj({"$schema": text, "language": {"const": "rp/1"}, "target": {"const": 9}, "name": text, "theme": {"enum": sorted(THEMES)},
+    result = obj({"$schema": text, "language": {"const": "rp/1"}, "target": {"enum": [9, 11]}, "name": text, "theme": {"enum": sorted(THEMES)},
         "palette": palette_spec, "tokens": {"type": "object", "additionalProperties": ref("dataValue")},
         "device": {"enum": sorted(DEVICE_CANVAS_PRESETS)}, "devMode": {"type": "boolean"},
         "domain": {"enum": ["web", "mobile", "doc", "test"]}, "shell": {"enum": sorted(DEVICE_CANVAS_PRESETS) + ["mobile-stack", "tablet-split", "web-console"]},

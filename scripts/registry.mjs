@@ -764,6 +764,12 @@ const LIB_SCRIPTS = [
     "evidence": "channel-a"
   },
   {
+    "script": "capabilities.mjs", "summary": "版本能力与原生验证证据分离的统一注册表", "evidence": "internal"
+  },
+  {
+    "script": "target-context.mjs", "summary": "统一目标版本上下文与基线检查", "evidence": "internal"
+  },
+  {
     "script": "native-scene.mjs",
     "summary": "RP/1 矩形场景直接写入 RP 9 原生编组、形状、文字和内嵌图片，无 GUI 或缓存依赖",
     "evidence": "internal"

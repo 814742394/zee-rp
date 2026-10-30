@@ -59,7 +59,8 @@ try {
     const schema = listMcpTools().find(t => t.name === 'generate_prototype').inputSchema;
     validateInput(schema, { spec: { pages: [{ id: 'home', root: { type: 'label', id: 'title', text: 'Hello' } }] }, output: '/new.rp' });
     assert.throws(() => validateInput(schema, { spec: { pages: [] }, output: '/new.rp' }));
-    assert.throws(() => validateInput(schema, { spec: { target: 11, pages: [{ id: 'home' }] }, output: '/new.rp' }));
+    validateInput(schema, { targetVersion: 11, spec: { target: 11, pages: [{ id: 'home' }] }, output: '/new.rp' });
+    assert.throws(() => validateInput(schema, { targetVersion: 10, output: '/new.rp' }));
   });
   check('Axvg public example builds deterministically', () => {
     const spec = JSON.parse(readFileSync(join(root, 'assets/dashboard-example.spec.json')));

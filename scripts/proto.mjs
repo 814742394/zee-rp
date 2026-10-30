@@ -35,6 +35,9 @@ import { setWidgetNames } from './name-widget.mjs';
 import { readRecords, encodeRecord, replaceRecord, appendPackage } from './rp-records.mjs';
 import { parsePayload, encodePayload, field } from './parse-payload.mjs';
 import { guidKey } from './duplicate-page.mjs';
+import { targetContext } from './target-context.mjs';
+import { getBackend } from './backends/index.mjs';
+import { assertWritable } from './engine.mjs';
 import { installRoot } from './version.mjs';
 import { assertNotProtected } from './engine.mjs';
 
@@ -83,7 +86,8 @@ const HELP_TEXT = {
   --no-interactions     静态交付模式：跳过全部交互绑定，生成纯静态原型 (interactions=0)
   --strict-audit        严格审计模式：将审美与令牌告警 (aesthetic_gates) 升级为硬失败 (exit 1)
   --compile-only        (仅 generate) 只生成 2x 预览图与审计报告，不启动 Axure GUI 装配 .rp
-  --backend <name>      native | gui (RP/1 默认 native，旧规格默认 gui)
+  --axure-version <n>   9 | 11（调用参数优先于源码 target，缺省为 9）
+  --backend <name>      native | gui (RP/1 默认 native；旧 gui 装配仅支持 RP9)
   --cache-dir <dir>     Axvg 粘贴阶段缓存目录 (默认: <skill>/.proto-axvg-cache)
   --verbose             在 stderr 打印分阶段耗时与详细错误分类日志
   -h, --help            显示帮助信息 (支持 node proto.mjs <command> --help)
@@ -125,7 +129,8 @@ const HELP_TEXT = {
 选项:
   --plan <path>         compile 生成的 compile-plan.json 路径 (必填)
   --out, -o <path>      输出 .rp 文件路径 (必填，禁止覆盖已存在文件)
-  --backend <name>      native | gui (RP/1 默认 native，旧规格默认 gui)
+  --axure-version <n>   9 | 11（调用参数优先于源码 target，缺省为 9）
+  --backend <name>      native | gui (RP/1 默认 native；旧 gui 装配仅支持 RP9)
   --cache-dir <dir>     Axvg 粘贴缓存目录
   --no-interactions     静态交付模式：跳过 addInteractions，产生物理 0 交互 .rp
   --verbose             打印每页图形生成、面板填充、多页合并、三零审计的分阶段耗时
@@ -143,7 +148,8 @@ const HELP_TEXT = {
   --no-interactions     静态交付模式：产出纯静态 .rp (interactions=0)
   --strict-audit        严格审计模式：审美门禁不达标时中止生成
   --compile-only        仅执行离线布局编译、2x 预览图渲染与审计，不调用 Axure GUI
-  --backend <name>      native | gui (RP/1 默认 native，旧规格默认 gui)
+  --axure-version <n>   9 | 11（调用参数优先于源码 target，缺省为 9）
+  --backend <name>      native | gui (RP/1 默认 native；旧 gui 装配仅支持 RP9)
   --cache-dir <dir>     Axvg 粘贴缓存目录
   --verbose             打印分阶段进度与耗时 (ms)
 `,
@@ -358,12 +364,12 @@ function normalizeEvents(events) {
   }));
 }
 
-function createBlankPageBuffer() {
+function createBlankPageBuffer(context) {
   const tmpDir = mkdtempSync(join(tmpdir(), 'proto-blank-'));
   const blankRp = join(tmpDir, 'blank.rp');
   try {
-    createBlankProject(blankRp, { version: 9 });
-    return readFileSync(blankRp);
+    createBlankProject(blankRp, { version: context.targetVersion, template: context.template });
+    return mergePages([{ buf: readFileSync(blankRp), name: 'Page 1' }]);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -372,21 +378,28 @@ function createBlankPageBuffer() {
 export function buildInteractiveRp(
   planPath,
   outputRpPath,
-  { cacheDir = DEFAULT_CACHE_DIR, backend, noInteractions = false, verbose = false, skipBaseline = false, sourcePath = null } = {}
+  { cacheDir = DEFAULT_CACHE_DIR, backend, noInteractions = false, verbose = false, skipBaseline = false, sourcePath = null, targetVersion, template } = {}
 ) {
   const buildT0 = Date.now();
   const absOut = resolve(outputRpPath);
   assertNotProtected(absOut);
+  assertWritable(absOut);
   if (existsSync(absOut)) {
     throw new Error(`Output .rp already exists (refusing to overwrite): ${absOut}`);
   }
   const plan = JSON.parse(readFileSync(resolve(planPath), 'utf8'));
+  const context = targetContext({ targetVersion: targetVersion ?? plan.targetVersion, template });
+  const adapter = getBackend(context);
+  adapter.validatePlan(plan);
   backend ??= plan.language === 'rp/1' ? 'native' : 'gui';
   if (!['native', 'gui'].includes(backend)) throw new Error('backend must be native or gui');
   const buildStage = path => {
-    if (backend === 'gui') return placeAxvgToCachedRp(path, cacheDir, verbose);
+    if (backend === 'gui') {
+      if (context.targetVersion !== 9) throw new Error('Legacy GUI assembly only supports RP9; use native file delivery');
+      return placeAxvgToCachedRp(path, cacheDir, verbose);
+    }
     const start = Date.now();
-    const buffer = writeNativeScene(createBlankPageBuffer(), JSON.parse(readFileSync(path, 'utf8')));
+    const buffer = writeNativeScene(createBlankPageBuffer(context), JSON.parse(readFileSync(path, 'utf8')));
     const summary = readRp(buffer);
     return { buffer, backend, cached: false, widgets: summary.counts.widgets, elapsedMs: Date.now() - start };
   };
@@ -406,7 +419,7 @@ export function buildInteractiveRp(
     if (!inputs.length) return buf;
     const tmpWork = mkdtempSync(join(tmpdir(), 'proto-inputs-'));
     try {
-      const rplibPath = join(installRoot(9), 'Libraries', 'Default.rplib');
+      const rplibPath = join(installRoot(context.targetVersion), 'Libraries', 'Default.rplib');
       let step = 0;
       for (const inp of inputs) {
         const input = join(tmpWork, `step-${step++}.rp`);
@@ -414,9 +427,9 @@ export function buildInteractiveRp(
         const initialized = join(tmpWork, `step-${step++}.rp`);
         writeFileSync(input, buf);
         const report = cloneLibraryWidget(rplibPath, input, output, {
-          sourcePageName: 'Text Field', targetPageName: 'Page 1', name: inp.name,
+          sourcePageName: adapter.inputLibraryPage, targetPageName: 'Page 1', name: inp.name,
           x: inp.x, y: inp.y, width: inp.w, height: inp.h,
-          inputStyle: inp.style, placeholder: inp.placeholder,
+          inputStyle: inp.style, placeholder: inp.placeholder, inputType: inp.inputType,
         });
         setWidgetText(output, initialized, 'Page 1', inp.name, inp.value ?? '');
         buf = readFileSync(initialized);
@@ -434,7 +447,7 @@ export function buildInteractiveRp(
       buffer = createPanel(buffer, {pageName:'Page 1',name:dp.name,states:dp.states.map(s=>s.name),x:dp.x,y:dp.y,width:dp.w,height:dp.h}).file;
       for (const state of dp.states) {
         const source = assemble(state,`${label}/${dp.name}/${state.name}`,state.prefix ?? state.name);
-        const filled = fillPanelState(source,buffer,{sourcePage:'Page 1',targetPage:'Page 1',panel:dp.name,state:state.name,version:9});
+        const filled = fillPanelState(source,buffer,{sourcePage:'Page 1',targetPage:'Page 1',panel:dp.name,state:state.name,version:context.targetVersion});
         buffer = filled.file;
       }
       panelReports.push({page:label,panel:dp.name,states:dp.states.map(s=>s.name)});
@@ -634,7 +647,7 @@ export function buildInteractiveRp(
       : { ...(typeof ix.trigger === 'object' ? ix.trigger : { widget: ix.trigger }), ...owner };
     let res;
     try {
-      res = addInteractions(currentBuf, trig, normalizeEvents(ix.events), { replaceEvent: true, version: 9 });
+      res = addInteractions(currentBuf, trig, normalizeEvents(ix.events), { replaceEvent: true, version: context.targetVersion });
     } catch (cause) {
       if (!ix.sourcePointer) throw cause;
       const error = new Error(cause.message);
@@ -709,6 +722,7 @@ export function buildInteractiveRp(
       : null;
     const baselineMeta = {
       version: 1,
+      formatVersion: 2, targetVersion: context.targetVersion, delivery: 'file',
       outputRp: absOut,
       sourcePath: resolvedSrcPath,
       sourceSha256,
@@ -736,6 +750,7 @@ export function buildInteractiveRp(
     rpSha256,
     backend,
     version: finalSummary.version,
+    formatVersion: 2, targetVersion: context.targetVersion, delivery: 'file',
     static: staticMode,
     elapsedMs: totalElapsedMs,
     counts: {
@@ -762,12 +777,14 @@ export function buildInteractiveRp(
   };
 }
 
-export function compilePrototype(specPath, outDir, { strictAudit = false, autoHeal = false, theme, title } = {}) {
-  return runPy(buildCompileArgs({ spec: specPath, 'strict-audit': strictAudit, 'auto-heal': autoHeal, theme, title }, outDir), { allowAuditFailure: true });
+export function compilePrototype(specPath, outDir, { strictAudit = false, autoHeal = false, theme, title, targetVersion } = {}) {
+  if (targetVersion !== undefined) targetContext({ targetVersion });
+  return runPy(buildCompileArgs({ spec: specPath, 'axure-version': targetVersion, 'strict-audit': strictAudit, 'auto-heal': autoHeal, theme, title }, outDir), { allowAuditFailure: true });
 }
 
 function buildCompileArgs(flags, outDir) {
   const pyArgs = ['compile', '--out-dir', resolve(outDir)];
+  if (flags['axure-version'] !== undefined) pyArgs.push('--axure-version', String(flags['axure-version']));
   if (flags.spec) pyArgs.push('--spec', resolve(String(flags.spec)));
   if (flags.preset) pyArgs.push('--preset', String(flags.preset));
   if (flags.theme) pyArgs.push('--theme', String(flags.theme));
@@ -817,6 +834,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
           buildInteractiveRp(plan, out, {
             cacheDir: flags['cache-dir'] || DEFAULT_CACHE_DIR,
             backend: flags.backend,
+            targetVersion: flags['axure-version'],
             noInteractions: Boolean(flags['no-interactions']),
             verbose,
           }),
@@ -839,6 +857,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         const rpBuilt = buildInteractiveRp(compiled.planPath, outRp, {
           cacheDir: flags['cache-dir'] || DEFAULT_CACHE_DIR,
           backend: flags.backend,
+            targetVersion: flags['axure-version'],
           noInteractions: Boolean(flags['no-interactions']),
           verbose,
         });

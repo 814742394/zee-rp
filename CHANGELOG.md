@@ -1,3 +1,9 @@
+# Unreleased — dual-target architecture
+
+- Shared RP/1 compiler and explicit RP9/RP11 file backends.
+- Breaking: image generation uses targetVersion; version/guiPaste removed. Compile plans and baselines require formatVersion 2; regenerate old artifacts.
+- Basic dual-target offline coverage added; native acceptance remains pending. See [architecture](docs/dual-target-architecture.md).
+
 # Changelog
 
 ## Unreleased

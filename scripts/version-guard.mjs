@@ -1,3 +1,4 @@
+import { RP9_COMMAND_STATUS, commandCapability } from './capabilities.mjs';
 // 版本能力检查：CLI、MCP 与直接脚本调用共用的唯一判定点。
 //
 // 三件事，按顺序做：
@@ -35,42 +36,7 @@ export function labelOf(version) {
 // 命令在 RP9 上的支持等级。缺省 = unverified（放行 + 提示），只有写进 blocked 的才前置拒绝。
 // core：RP9 Core 首期能力（结构 + 原生打开按 docs/rp9-capabilities.md 的证据等级）；
 // unverified：脚本能跑，但没有任何 RP9 原生验收证据，禁止对外宣称可用。
-export const RP9_COMMAND_STATUS = {
-  'rp-read': 'core',
-  'set-widget-text': 'core',
-  'clone-library-widget': 'core',
-  'create-blank-project': 'core',
-  'create-blank-page': 'core',
-  'axvg build': 'core',
-  'axvg selftest': 'core',
-  'duplicate-page': 'unverified',
-  'create-global-variable': 'unverified',
-  'create-master': 'unverified',
-  'place-master': 'unverified',
-  'create-panel-clone': 'unverified',
-  'fill-panel-state': 'unverified',
-  'remove-panel-state-content': 'unverified',
-  'set-panel-fit-to-content': 'unverified',
-  'add-adaptive-view': 'unverified',
-  'add-interaction': 'unverified',
-  'remove-interaction': 'unverified',
-  'add-click-link': 'unverified',
-  'clone-library-page-content': 'unverified',
-  'set-combobox-options': 'unverified',
-  'set-listbox-options': 'unverified',
-  'set-native-table': 'unverified',
-  'clone-native-connector': 'unverified',
-  'set-connector-anchors': 'unverified',
-  'set-widget-richtext': 'unverified',
-  'set-master-overrides': 'unverified',
-  'name-widget': 'unverified',
-  'patch-link-window': 'unverified',
-  'patch-string': 'unverified',
-  // 剪贴板落画：本机实测 RP9 画布不识别该内容（2026-10-20），默认拒绝。
-  // 上游 0.2.1 改成「按 --version 9 正常放行」，两者结论冲突，见 docs/rp9-capabilities.md。
-  // 需要试这条路线时用 AXURE_ALLOW_RP9_PASTE=1 显式放行，此时只给 unverified 提示。
-  'axvg paste': 'blocked',
-};
+export { RP9_COMMAND_STATUS };
 
 // 动作级拒绝名单：动作类型是 RP9 不认识的类名，写进文件会让 RP9 拒绝打开整个工程。
 // ix-actions.mjs 在 writer 层已单独拒绝一次，这里是写出任何文件之前的第二道。
@@ -89,9 +55,7 @@ const SAME_VERSION_REQUIRED = new Set([
 ]);
 
 export function commandStatusFor(version, command) {
-  if (version !== RP9) return 'verified';
-  if (command === 'axvg paste' && process.env.AXURE_ALLOW_RP9_PASTE === '1') return 'unverified';
-  return RP9_COMMAND_STATUS[command] ?? 'unverified';
+  return commandCapability(version, command).status;
 }
 
 // ---- 路径与版本收集 ----
@@ -253,7 +217,7 @@ export function preflight({ command, args = [], baseDir = process.cwd() } = {}) 
     throw blocked(`Axure RP 9 项目不支持命令「${command}」：${RP9_COMMAND_REASONS[command] ?? '该功能依赖 RP9 不具备的记录或类名'}`, { command, files });
   }
   if (status === 'unverified') {
-    warnings.push(`「${command}」在 Axure RP 9 上未经验证（证据等级 unverified）：结构检查通过不代表 RP9 能打开、预览或再次编辑，验收前不要当作可用。`);
+    warnings.push(`「${command}」在 ${labelOf(version)} 上未经验证（证据等级 unverified）：结构检查通过不代表 RP9 能打开、预览或再次编辑，验收前不要当作可用。`);
   }
 
   // 素材同版本：只接受同版本 .rplib / 模板。

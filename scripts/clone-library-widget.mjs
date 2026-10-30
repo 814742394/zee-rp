@@ -1,3 +1,4 @@
+import { getBackend } from './backends/index.mjs';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readRecords, encodeRecord, replaceRecord } from './rp-records.mjs';
@@ -13,12 +14,13 @@ const uniquePage = (summary, name, role) => {
 };
 
 export function cloneLibraryWidget(sourceFile, targetFile, outputFile, {
-  sourcePageName, targetPageName, name, x, y, width, height, inputStyle, placeholder
+  sourcePageName, targetPageName, name, x, y, width, height, inputStyle, placeholder, inputType
 }) {
   if (!sourcePageName || !targetPageName || !name) throw new Error('sourcePageName, targetPageName, and name are required');
   let output = readFileSync(targetFile);
   const sourceBytes = readFileSync(sourceFile);
   const sourceSummary = readRp(sourceBytes, { path: sourceFile });
+  if (sourceSummary.version !== detectFileVersion(output)) throw Object.assign(new Error('Library version does not match project'), { code: 'E_TARGET_MISMATCH' });
   const targetSummary = readRp(output, { path: targetFile });
   const sourcePageMeta = uniquePage(sourceSummary, sourcePageName, 'Source');
   const targetPageMeta = uniquePage(targetSummary, targetPageName, 'Target');
@@ -104,6 +106,13 @@ export function cloneLibraryWidget(sourceFile, targetFile, outputFile, {
     put(11, num(inputStyle.textPaddingX)); put(13, num(inputStyle.textPaddingX));
     put(12, num(0)); put(14, num(0));
     Object.assign(field(widget.body, 'PlaceholderText'), str(placeholder ?? ''));
+  }
+
+  if (inputType !== undefined) {
+    if (!['text', 'password'].includes(inputType) || widget.className !== 'Axure:DiagramObject:TextBox') throw new Error('Invalid inputType');
+    const typeField = field(widget.body, 'Type');
+    if (!typeField || typeField.tag !== 5) throw new Error('TextBox lacks native Type enum');
+    typeField.value = getBackend({ targetVersion: detectFileVersion(output) }).inputTypes[inputType];
   }
 
   field(diagram.body, 'diagram-objects').items.push({ tag: 3, value: widget.id });

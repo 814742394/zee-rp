@@ -448,7 +448,7 @@ def decompile_rp(rp_path_or_dict):
 
     spec = {
         "language": "rp/1",
-        "target": 9,
+        "target": rp_data.get("version", 9),
         "name": pages[0]["name"] if pages else "Decompiled Prototype",
         "domain": "web" if any(pg["canvas"]["w"] > 600 for pg in pages) else "mobile",
         "theme": "enterprise-light" if any(pg["canvas"]["w"] > 600 for pg in pages) else "mobile-lowfi",

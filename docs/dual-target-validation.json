@@ -1,0 +1,50 @@
+{
+  "status": "incomplete-native-acceptance",
+  "date": "2026-10-30",
+  "system": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "apps": {
+    "9": {
+      "CFBundleShortVersionString": null,
+      "CFBundleVersion": "9.0.0.3740"
+    },
+    "11": {
+      "CFBundleShortVersionString": null,
+      "CFBundleVersion": "11.0.0.4131"
+    }
+  },
+  "baseline": {
+    "rp9Core": "12/12",
+    "public": "17/17"
+  },
+  "offline": {
+    "language": "50/50",
+    "runtime": "59/59",
+    "nativeBackend": "32 checks",
+    "authoring": "18/18",
+    "dualTarget": "passed; includes async"
+  },
+  "native": {
+    "9": {
+      "open": false,
+      "preview": false,
+      "edit": false,
+      "saveReopen": false
+    },
+    "11": {
+      "open": false,
+      "preview": false,
+      "edit": false,
+      "saveReopen": false
+    }
+  },
+  "blockers": [
+    "System Events keystroke denied (1002)",
+    "AX menu probe returned NO_MENUBAR",
+    "RP11 offline template was trimmed from local sample, not native-accepted"
+  ],
+  "samples": {
+    "basic-9.rp": "135af939ecc65ca36e386386a7cd3734d62df908afae987ae51589f3a0640ee1",
+    "basic-11.rp": "8e0ec437ef329e71d905e30e406bf68277d7a60ac90f8db35c8714ac2cf90c77",
+    "async-11.rp": "33bc72379f891bc0c339cd2521d373ed0edd0bc04ec3d9ae5e1f00838dd260a2"
+  }
+}

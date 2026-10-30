@@ -234,7 +234,7 @@ class LanguageContract(unittest.TestCase):
 
     def test_unsupported_target_version(self):
         spec = fixture()
-        spec["target"] = 11
+        spec["target"] = 10
         self.reject(spec, "E_TARGET_UNSUPPORTED", "/target")
 
     def test_ai_native_sugar_desugaring(self):

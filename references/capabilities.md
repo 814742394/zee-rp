@@ -1,3 +1,5 @@
+> 双版本更新：当前接口、支持边界和未完成验收见 [统一架构](../docs/dual-target-architecture.md)；下文历史记录不自动代表 RP11 验收。
+
 # 能力与验证边界
 
 未发布工作改动（2026-10-25）：图片圆角/透明度以嵌入 Alpha PNG 生效，现代手机壳以四个局部角部遮罩遮住内屏外内容；居中单 label 继承文字居中，显式对齐保留；tab-bar 支持 underline/dot/none、activeVariant、justify、itemFlex 及激活/非激活颜色。静态状态图增加视口/内容尺寸。当前测试与宿主验证范围见 [试用反馈复验](../docs/authoring-feedback-20261025.md)；字体与静态预览限制见 [视觉创作](visual-authoring.md)。

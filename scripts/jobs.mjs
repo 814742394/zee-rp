@@ -1,4 +1,6 @@
-import { spawn } from 'node:child_process';
+import { resolveBlankTemplate } from './blank-template.mjs';
+import { targetContext, validateBaseline } from './target-context.mjs';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { copyFileSync, existsSync, readFileSync, statSync, realpathSync, constants } from 'node:fs';
 import { dirname, basename, join, extname, resolve } from 'node:path';
@@ -40,6 +42,25 @@ export class JobManager {
     if (output) assertWritable(output);
     const args = structuredClone({ ...input, ...(output ? { output } : {}) });
     delete args.async;
+    if (type === 'revise-prototype') {
+      assertNotProtected(args.rp); assertNotProtected(`${args.rp}.baseline.json`);
+      args.targetVersion = validateBaseline(JSON.parse(readFileSync(`${args.rp}.baseline.json`, 'utf8')), args.rp, args.targetVersion).targetVersion;
+    } else {
+      let spec = args.spec && typeof args.spec === 'object' ? args.spec : null;
+      const source = args.source ?? args.sourcePath ?? (typeof args.spec === 'string' ? args.spec : null);
+      if (source) {
+        assertNotProtected(source);
+        if (source.trimStart().startsWith('{')) spec = JSON.parse(source);
+        else if (source.endsWith('.json')) spec = JSON.parse(readFileSync(source, 'utf8'));
+        else {
+          const proc = spawnSync('python3', [fileURLToPath(new URL('./rp_language_cli.py', import.meta.url)), 'dsl-to-json', '--spec', source], { encoding: 'utf8' });
+          if (proc.status !== 0) throw new Error(proc.stderr || 'Cannot parse source');
+          spec = JSON.parse(proc.stdout);
+        }
+      }
+      args.targetVersion = targetContext({ targetVersion: args.targetVersion, sourceTarget: spec?.target, file: args.baseRp, template: args.template }).targetVersion;
+    }
+    args.template ??= resolveBlankTemplate(args.targetVersion);
     const inputHashes = {};
     for (const file of [args.source, args.sourcePath,
       typeof args.spec === 'string' && !args.spec.trimStart().startsWith('{') ? args.spec : null,
@@ -49,7 +70,7 @@ export class JobManager {
       inputHashes[path] = createHash('sha256').update(readFileSync(path)).digest('hex');
     }
     const id = randomUUID();
-    const job = { id, type, input: args, inputHashes, output, status: 'queued', phase: 'queued',
+    const job = { id, type, targetVersion: args.targetVersion, delivery: 'file', formatVersion: 2, input: args, inputHashes, output, status: 'queued', phase: 'queued',
       createdAt: new Date().toISOString(), stdout: '', stderr: '', result: null };
     job.done = new Promise(resolveDone => { job.finish = resolveDone; });
     this.jobs.set(id, job);

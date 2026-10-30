@@ -9,16 +9,16 @@ import { resolveBlankTemplate } from './blank-template.mjs';
 import { assertNotProtected } from './engine.mjs';
 import { DEFAULT_VERSION, detectFileVersion, resolveTargetVersion } from './version.mjs';
 
-export function createBlankProject(outputPath, { version = DEFAULT_VERSION } = {}) {
+export function createBlankProject(outputPath, { version = DEFAULT_VERSION, template } = {}) {
   const target = resolveTargetVersion(version);
-  const TEMPLATE = resolveBlankTemplate(target);
+  const TEMPLATE = resolveBlankTemplate(target, template);
   const output = resolve(outputPath);
   assertNotProtected(output);
   if (extname(output).toLowerCase() !== '.rp') throw new Error('Output path must end in .rp');
 
-  const template = readFileSync(TEMPLATE);
-  const summary = readRp(template, { path: TEMPLATE });
-  const records = readRecords(template);
+  const templateBytes = readFileSync(TEMPLATE);
+  const summary = readRp(templateBytes, { path: TEMPLATE });
+  const records = readRecords(templateBytes);
   const page = records.find(record => record.index === summary.pages[0]?.record && record.className === 'Axure:Page');
   const graph = page && parsePayload(page);
   const pageObject = graph && [...graph.objects.values()].find(object => object.className === 'Axure:Page');
@@ -31,13 +31,13 @@ export function createBlankProject(outputPath, { version = DEFAULT_VERSION } = {
   copyFileSync(TEMPLATE, output, constants.COPYFILE_EXCL);
   return {
     output,
-    version: detectFileVersion(template),
+    version: detectFileVersion(templateBytes),
     template: TEMPLATE,
     page: summary.pages[0].name,
     pages: summary.counts.pages,
     widgets: summary.counts.widgets,
     panelStates: summary.counts.panelStates,
-    bytes: template.length
+    bytes: templateBytes.length
   };
 }
 

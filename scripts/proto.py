@@ -2935,6 +2935,7 @@ def emit_tree_to_axvg(root_node, theme_dict, include_dynamic_panel_placeholders=
             native_inputs.append({
                 "name": name,
                 "bgName": bg_name,
+                "inputType": node.get("inputType", "text"),
                 "placeholder": node.get("placeholder", ""),
                 "value": node.get("value", ""),
                 "x": nx,
@@ -5082,6 +5083,7 @@ def compile_prototype_bundle(out_dir, theme_name="enterprise-light", title_overr
         },
     ]
     compile_plan = {
+        "formatVersion": 2, "targetVersion": 9, "delivery": "file",
         "pageName": "Page 1",
         "theme": theme_name,
         "static": bool(no_interactions),
@@ -5945,7 +5947,7 @@ KNOWN_NODE_PROPS = {
     "columnGap", "rowGap", "align", "justify", "equalHeight", "fill", "stroke", "color",
     "radius", "isGroup", "bgName", "isModal", "children", "text", "content", "fontSize",
     "size", "fontWeight", "weight", "lineHeight", "lineGap", "maxLines", "variant",
-    "placeholder", "value", "native", "textPaddingX", "caption", "src", "image", "file",
+    "inputType", "placeholder", "value", "native", "textPaddingX", "caption", "src", "image", "file",
     "states", "root", "tree", "title", "titleAlign", "subtitle", "leftIcon", "leftText",
     "backName", "rightText", "rightName", "buttonText", "headerTitle", "headerRight",
     "emptyHint", "shareText", "claimText", "items", "activeIndex", "cards", "cardHeight",
@@ -6119,7 +6121,7 @@ def _expand_declarative_tree_core(node, prefix="p1"):
                 "stroke": node.get("stroke", "$line-strong"),
                 "radius": snap_token(node.get("radius", 6), RADIUS_TOKENS),
             }
-            for key in ("fontSize", "size", "fontWeight", "weight", "color", "align", "textPaddingX", "x", "y", "right", "bottom", "anchor"):
+            for key in ("inputType", "fontSize", "size", "fontWeight", "weight", "color", "align", "textPaddingX", "x", "y", "right", "bottom", "anchor"):
                 if key in node:
                     out_ni[key] = node[key]
             if "flex" in node:
@@ -7621,6 +7623,9 @@ def _compile_spec_bundle(spec_data, out_dir, theme_override=None, base_dir=None,
     compile_plan["scenes"] = all_scenes
     compile_plan["sceneCoverage"] = scene_summary["sceneCoverage"]
     compile_plan["audit"] = combined_audit
+    compile_plan["formatVersion"] = 2
+    compile_plan["targetVersion"] = raw_source_spec.get("target", 9)
+    compile_plan["delivery"] = "file"
     compile_plan["sourceSpec"] = raw_source_spec
     if heal_enabled:
         heal_summary = {
@@ -8088,6 +8093,7 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True, parser_class=_StructuredArgumentParser)
     p_comp = sub.add_parser("compile", help="编译多态/多页交互原型产物包 (axvg + spec + 2x预览 + 审计报告)")
     p_comp.add_argument("--out-dir", required=True, help="输出目录")
+    p_comp.add_argument("--axure-version", type=int, choices=[9, 11], default=None)
     p_comp.add_argument("--spec", default=None, help="声明式多页/组件树 spec.json 路径")
     p_comp.add_argument("--preset", default="web-dashboard", choices=["web-dashboard", "mobile-lostfound"], help="内置旗舰预设")
     p_comp.add_argument("--theme", default=None, choices=list(THEMES.keys()), help="设计令牌主题")
@@ -8233,6 +8239,8 @@ def main():
         if args.spec:
             spec_abs = os.path.abspath(args.spec)
             spec_obj = read_source(spec_abs)
+            if args.axure_version is not None:
+                spec_obj["target"] = args.axure_version
             if getattr(args, "shell", None):
                 spec_obj["shell"] = args.shell
                 spec_obj["domain"] = "mobile" if args.shell == "mobile-stack" else "web"

@@ -1,3 +1,5 @@
+> 双版本更新：当前接口、支持边界和未完成验收见 [统一架构](../docs/dual-target-architecture.md)；下文历史记录不自动代表 RP11 验收。
+
 # 一次 MCP 调用生成完整原型
 
 创作入口、完整范例、改稿闭环和诊断见 [authoring-workflow.md](authoring-workflow.md)。

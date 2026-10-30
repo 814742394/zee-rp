@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { listCommands } from './registry.mjs';
 import { assertWritable } from './engine.mjs';
-import { runRegression } from '../test/regression.mjs';
+import { generationCapabilities, commandCapability } from './capabilities.mjs';
 
 export function generateCapabilities() {
   // LIB_SCRIPTS 未导出；用既有 dump 接口取数据，保持注册表逻辑和导出契约不变。
@@ -11,9 +11,6 @@ export function generateCapabilities() {
   if (dump.status !== 0) throw new Error(dump.stderr || 'registry dump failed');
   const { libScripts } = JSON.parse(dump.stdout);
   const commands = listCommands();
-  const snapshots = JSON.parse(readFileSync(new URL('../test/snapshots.json', import.meta.url), 'utf8'));
-  const regression = runRegression();
-  if (regression.failed) throw new Error(`回归失败 ${regression.failed} 项，拒绝生成通过状态文档`);
   const esc = text => String(text).replaceAll('|', '\\|').replaceAll('\n', '<br>');
   const lines = [
     '# 命令注册表与离线回归', '',
@@ -33,15 +30,18 @@ export function generateCapabilities() {
     '- `gui-roundtrip`：指定样本有原生保存、关闭、重开记录；不代表该命令全部组合已验证。',
     '- `channel-a`：Axvg 剪贴板静态路线的登记标签，build/selftest 是离线编码检查，paste 是原生粘贴入口；标签本身不证明任意元件或行为通过。',
     '- `internal`：内部库或研究工具，没有面向用户的能力承诺。', '',
-    '## Fixture 回归状态', '',
-    `生成时实际运行：${regression.total} 项断言全部通过，其中既有 parity 23 项。`,
-    `快照 ${Object.keys(snapshots).length} 个文件，${Object.keys(regression.categories).length} 类；每件核对 SHA、解析、引用及完整摘要。`,
-    '容器内部记录包含对象类计数和完整 payload 语义 SHA，覆盖状态、母版和中继器行模板；顶层交互计数单独保留。',
-    '这是已保存样本的离线回归；本次没有重跑 GUI 和预览，历史 GUI 证据仍按原样本范围使用。', '',
-    '| 类别 | 样本数 |', '| --- | --- |'
+    '## 目标版本能力', '',
+    '本表只报告实现与已登记证据；生成文档不执行原生验收。', '',
+    '| 目标 | 能力 | 支持方式 | 实现 | 结构 | 打开 | 预览 | 保存重开 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |'
   );
-  for (const [category, count] of Object.entries(regression.categories)) lines.push(`| ${esc(category)} | ${count} |`);
-  lines.push('', '运行：`node test/regression.mjs`；明确更新基线：`node test/regression.mjs --update`。', '');
+  for (const [version, features] of Object.entries(generationCapabilities))
+    for (const [feature, capability] of Object.entries(features))
+      lines.push(`| RP${version} | ${feature} | ${capability.support} | ${capability.implementation} | ${capability.evidence.structure} | ${capability.evidence.nativeOpen} | ${capability.evidence.preview} | ${capability.evidence.saveReopen} |`);
+  lines.push('', '| 命令 | RP9 状态 | RP11 状态 |', '| --- | --- | --- |');
+  for (const command of commands)
+    lines.push(`| ${esc(command.command)} | ${commandCapability(9, command.command).status} | ${commandCapability(11, command.command).status} |`);
+  lines.push('', '原生验收未完成时不得将 implemented 或 core 解释为宿主验证通过。', '');
   return lines.join('\n');
 }
 

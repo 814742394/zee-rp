@@ -1,3 +1,5 @@
+> RP9/RP11 架构更新：基础文件生成已接入双版本；原生验收尚未完成。接口与迁移说明见 [统一架构](docs/dual-target-architecture.md)。
+
 <div align="center">
 
 <img src="assets/readme/hero.svg" alt="zee-rp — Describe. Compile. Keep editing." width="100%">

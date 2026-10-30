@@ -259,7 +259,7 @@ NODE_PROPS = {
     "paragraph": TEXT | {"lineGap", "lineHeight", "maxLines", "padding", "fill", "stroke", "radius"} | STYLE_EXTRAS,
     "button": TEXT | {"variant", "fill", "stroke", "radius", "icon"} | STYLE_EXTRAS,
     "badge": TEXT | {"variant", "fill", "stroke", "radius", "icon"} | STYLE_EXTRAS,
-    "input": {"value", "placeholder", "native", "fill", "stroke", "radius", "fontSize", "size", "fontWeight", "weight", "color", "align", "textPaddingX"} | STYLE_EXTRAS,
+    "input": {"inputType", "value", "placeholder", "native", "fill", "stroke", "radius", "fontSize", "size", "fontWeight", "weight", "color", "align", "textPaddingX"} | STYLE_EXTRAS,
     "divider": {"direction", "color", "fill", "opacity"},
     "image": {"src", "radius", "opacity", "shadow"},
     "icon": {"icon", "color", "fill", "stroke", "radius", "strokeWidth"} | STYLE_EXTRAS,
@@ -4700,7 +4700,7 @@ class Frontend:
             values["visible"] = False
             values["hidden"] = True
             values["_when_default_visible"] = False
-        for key, choices in {"layout": {"row", "column", "stack", "grid"},
+        for key, choices in {"inputType": {"text", "password"}, "layout": {"row", "column", "stack", "grid"},
                              "justify": {"start", "center", "end", "space-between", "space-around", "space-evenly"},
                              "variant": {"primary", "secondary", "outline", "soft", "danger", "glass", "ghost"},
                              "direction": {"horizontal", "vertical"},
@@ -6071,8 +6071,8 @@ class Frontend:
             fail("E_LANGUAGE", "/language", "Expected language: rp/1")
         if "name" in self.spec:
             self.typecheck(self.spec["name"], "text", "/name")
-        if self.spec.get("target", 9) != 9:
-            fail("E_TARGET_UNSUPPORTED", "/target", "RP/1 v1 native backend supports target 9")
+        if self.spec.get("target", 9) not in (9, 11):
+            fail("E_TARGET_UNSUPPORTED", "/target", "RP/1 supports targets 9 and 11")
         if self.spec.get("theme", "mobile-lowfi") not in THEMES:
             fail("E_THEME", "/theme", "Unknown theme")
         for key in ("static", "strictAudit", "devMode"):
@@ -6428,7 +6428,7 @@ class Frontend:
         for page in lowered["pages"]:
             assign_master_names(page["root"], page["slug"])
         symbols = sorted(self.symbols.values(), key=lambda symbol: symbol["id"])
-        ir = {"language": "rp/1", "irVersion": 2, "target": 9,
+        ir = {"language": "rp/1", "irVersion": 2, "target": self.spec.get("target", 9),
               "theme": lowered.get("theme", "slate"),
               "palette": copy.deepcopy(lowered.get("palette") or {}),
               "models": self.models, "datasets": self.datasets, "variables": self.variables,

@@ -1,3 +1,5 @@
+import { versionSpec } from './version.mjs';
+import { targetContext, validateBaseline } from './target-context.mjs';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -1123,11 +1125,12 @@ function loadSpecObjectFromSource(sourcePath) {
   return JSON.parse(proc.stdout);
 }
 
-export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sourcePath: sourcePathAlias, recipe, output: requestedOutput, strictAudit = false, autoHeal = false, variants, overwrite = false, compact = true, template, baseRp, prefer = 'fail', resolutions }, { beforePublish } = {}) {
+export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sourcePath: sourcePathAlias, recipe, output: requestedOutput, strictAudit = false, autoHeal = false, variants, overwrite = false, compact = true, template, targetVersion, baseRp, prefer = 'fail', resolutions }, { beforePublish } = {}) {
   let spec = { language: 'rp/1', target: 9 };
   let stage = 'validation', output, artifactDir, source, resolvedSourceFile = null, plan;
   let publishedRecipeSource = null, publishedRecipeOutput = null;
   try {
+    if (overwrite) throw Object.assign(new Error('不允许覆盖已有工程，请使用新输出路径。'), { code: 'E_OUTPUT_EXISTS' });
     if (typeof inputSpec === 'string' && inputSpec.trimStart().startsWith('{')) inputSpec = JSON.parse(inputSpec);
     if ([inputSpec, sourcePathArg, sourcePathAlias, recipe].filter(v => v !== undefined).length > 1)
       throw new Error('recipe、spec、source、sourcePath 只能选择一个输入入口。');
@@ -1142,7 +1145,8 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
     if (!rawSpecObj) {
       throw new Error('arguments.spec 必须是对象（或通过 source 提供 .rp1/.json 路径）');
     }
-    spec = { language: 'rp/1', target: 9, ...rawSpecObj };
+    const context = targetContext({ targetVersion, sourceTarget: rawSpecObj.target, template, file: baseRp });
+    spec = { language: 'rp/1', ...rawSpecObj, target: context.targetVersion };
     if (!Array.isArray(spec.pages) || spec.pages.length < 1) {
       throw new Error('arguments.spec.pages 至少需要 1 项');
     }
@@ -1178,6 +1182,7 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
       if (!pathExists(resolvedTpl)) throw new Error(`template 不存在：${resolvedTpl}`);
     }
     if (pathExists(resolvedOutput)) {
+      targetContext({ targetVersion: context.targetVersion, file: resolvedOutput });
       if (recipe) throw new Error('从范例创建需要新文件名；已有工程请使用 source 或 revise_prototype。');
       const existingSync = computeSyncStatus(resolvedOutput, resolvedSourceFile);
       if (existingSync.hasBaseline && existingSync.nativeChanged && prefer === 'fail') {
@@ -1216,7 +1221,7 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
     source = join(artifactDir, 'source.json');
     writeFileSync(source, JSON.stringify(spec, null, 2) + '\n', { flag: 'wx' });
     stage = 'compile';
-    const compiled = compilePrototype(resolvedSourceFile ?? source, artifactDir, { strictAudit, autoHeal: Boolean(autoHeal) });
+    const compiled = compilePrototype(resolvedSourceFile ?? source, artifactDir, { targetVersion: context.targetVersion, strictAudit, autoHeal: Boolean(autoHeal) });
     plan = JSON.parse(readFileSync(compiled.planPath, 'utf8'));
     if (!compiled.ok) {
       const error = new Error('原型未通过布局检查。');
@@ -1232,17 +1237,7 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
     }
     stage = 'native';
     const staged = join(artifactDir, 'prototype.rp');
-    const prevTpl = process.env.AXURE_BLANK_TEMPLATE_RP9;
-    if (template !== undefined) process.env.AXURE_BLANK_TEMPLATE_RP9 = resolve(template);
-    let build;
-    try {
-      build = buildInteractiveRp(compiled.planPath, staged, { backend: 'native' });
-    } finally {
-      if (template !== undefined) {
-        if (prevTpl === undefined) delete process.env.AXURE_BLANK_TEMPLATE_RP9;
-        else process.env.AXURE_BLANK_TEMPLATE_RP9 = prevTpl;
-      }
-    }
+    const build = buildInteractiveRp(compiled.planPath, staged, { backend: 'native', targetVersion: context.targetVersion, template, sourcePath: resolvedSourceFile ?? source });
     stage = 'structure';
     const rp = readRp(readFileSync(staged), { path: output });
     const structure = zerosOf(rp);
@@ -1313,13 +1308,6 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
       baseMeta.sourceSha256 = sha256Of(resolvedSourceFile);
       writeFileSync(outputBaseline, JSON.stringify(baseMeta, null, 2) + '\n');
     }
-    const buildPrefix = `.${basename(output, extname(output))}.build-`;
-    const currentBuildDirName = basename(artifactDir);
-    for (const entry of readdirSync(dirname(output))) {
-      if (entry.startsWith(buildPrefix) && entry !== currentBuildDirName) {
-        try { rmSync(join(dirname(output), entry), { recursive: true, force: true }); } catch {}
-      }
-    }
     const sha256 = sha256Of(output);
     const verification = { structure: true, axureOpened: false, guiEdited: false, saveReopened: false, preview: false };
     const nextGuiOutput = (() => {
@@ -1327,7 +1315,7 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
       if (!pathExists(`${stem}-gui.rp`)) return `${stem}-gui.rp`;
       for (let n = 2; ; n++) if (!pathExists(`${stem}-gui-${n}.rp`)) return `${stem}-gui-${n}.rp`;
     })();
-    const summary = { source: resolvedSourceFile ?? source, baseline: outputBaseline, verification,
+    const summary = { formatVersion: 2, targetVersion: context.targetVersion, delivery: 'file', source: resolvedSourceFile ?? source, baseline: outputBaseline, verification,
       nextActions: [
         { tool: 'revise_prototype', source: resolvedSourceFile ?? source, rp: output },
         { tool: 'gui_roundtrip', source: output, output: nextGuiOutput, preview: true },
@@ -1387,7 +1375,7 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
         if (!checked.ok) diagnostics = checked.diagnostics.map(d => generationDiagnostic(d, spec, plan));
       } catch { /* Preserve the original compiler diagnostic if secondary diagnosis is unavailable. */ }
     }
-    const result = { status: 'failed', stage, message: error.message,
+    const result = { status: 'failed', code: error.code, stage, message: error.message,
       diagnostics, ...(hints.length ? { hints } : {}),
       ...(artifactDir ? { artifacts: { directory: artifactDir, source: resolvedSourceFile ?? source } } : {}),
     };
@@ -1432,6 +1420,7 @@ function syncPrototype({
   rpFile: rpFileArg,
   file: fileArg,
   baseRp: baseRpArg,
+  targetVersion,
   baseline: baselineArg,
   baselinePath: baselinePathArg,
   output: outputArg,
@@ -1471,6 +1460,7 @@ function syncPrototype({
     let baselineData = null;
     if (baselinePath && pathExists(baselinePath)) {
       baselineData = JSON.parse(readFileSync(baselinePath, 'utf8'));
+      validateBaseline(baselineData, rpFile, targetVersion);
     }
     if (expectedSemanticHash && baselineData?.semanticHash && baselineData.semanticHash !== expectedSemanticHash) {
       throw Object.assign(new Error(`基线 semanticHash 不匹配（期望 ${expectedSemanticHash}，实际 ${baselineData.semanticHash}），拒绝过期更新。`), { code: 'E_STALE_SYNC_STATE' });
@@ -1580,7 +1570,7 @@ with open(out_p, 'w', encoding='utf-8') as f:
             page: baselineData?.pageName || '图片还原页',
           });
         } else {
-          buildResult = generatePrototype({ spec: liftedSpec, output: stagedOutputRp });
+          buildResult = generatePrototype({ spec: liftedSpec, targetVersion: readRp(readFileSync(rpFile)).version, output: stagedOutputRp });
         }
         if (buildResult.status === 'failed') {
           throw Object.assign(new Error(`lift 后编译 .rp 失败：${buildResult.message}`), { code: 'E_LIFT_REBUILD_FAILED', diagnostics: buildResult.diagnostics });
@@ -1659,7 +1649,7 @@ with open(out_p, 'w', encoding='utf-8') as f:
       if (!targetOutput) throw Object.assign(new Error('rebuild 模式必须提供 output (.rp) 路径或已指定 rp。'), { code: 'E_OUTPUT_REQUIRED' });
       const specObj = inlineSpec ?? loadSpecObjectFromSource(sourceInputFile);
       const stagedRebuildRp = join(tmpDir, 'rebuilt.rp');
-      const genRes = generatePrototype({ spec: specObj, output: stagedRebuildRp });
+      const genRes = generatePrototype({ spec: specObj, targetVersion: readRp(readFileSync(rpFile)).version, output: stagedRebuildRp });
       if (genRes.status === 'failed') {
         return genRes;
       }
@@ -1871,15 +1861,16 @@ function generateFromImage({
   image: imageArg,
   spec: specArg,
   output: requestedOutput,
-  version = 9,
+  targetVersion = 9,
+  template,
   scale,
   page = '图片还原页',
   replace = [],
   baseRp,
   prefer = 'fail',
   preview = false,
-  guiPaste = false,
 }) {
+  const version = targetContext({ targetVersion, template, file: baseRp }).targetVersion;
   let stage = 'validation', artifactDir, output;
   try {
     if (!isAbsolute(requestedOutput) || extname(requestedOutput).toLowerCase() !== '.rp') {
@@ -1989,29 +1980,6 @@ function generateFromImage({
     const axvgPayload = expandSpec(traceSpec);
     writeFileSync(axvgPath, JSON.stringify(axvgPayload, null, 2) + '\n');
 
-    if (version === 11) {
-      stage = 'rp11_paste';
-      if (!guiPaste) {
-        return {
-          status: 'failed',
-          stage,
-          code: 'E_RP11_GUI_PASTE_REQUIRED',
-          message: 'RP11 原生格式使用 SQLite 单库，不支持离线直接写出二进制 .rp；已在 artifacts 中生成 RP11 专用 .axvg.json 与分层 spec，请在 Axure RP 11 打开目标工程后设置 guiPaste=true 或调用 axvg_paste 放置。',
-          version: 11,
-          artifacts: { directory: artifactDir, assetsDir, image: imagePath, spec: specPath, axvg: axvgPath },
-        };
-      }
-      const pasteResult = pasteAxvg(axvgPayload, { version: 11 });
-      return {
-        status: 'completed',
-        backend: 'rp11-axvg-gui-paste',
-        version: 11,
-        pasteResult,
-        artifacts: { directory: artifactDir, assetsDir, image: imagePath, spec: specPath, axvg: axvgPath },
-        verification: { recognized: true, structure: false, axureOpened: true, guiEdited: false, saveReopened: false, preview: false },
-      };
-    }
-
     stage = 'rp9_spec';
     const rp9Proc = spawnSync('python3', [TRACE_PY, 'rp9-spec', specPath, '-o', rp9SpecPath, '--assets-dir', assetsDir], { encoding: 'utf8' });
     if (rp9Proc.status !== 0 || !pathExists(rp9SpecPath)) {
@@ -2026,7 +1994,7 @@ function generateFromImage({
     stage = 'native_write';
     const stagedBlank = join(artifactDir, 'blank.rp');
     const stagedRp = join(artifactDir, 'output.rp');
-    createBlankProject(stagedBlank, { version: 9 });
+    createBlankProject(stagedBlank, { version, template });
     const sceneBytes = writeNativeScene(readFileSync(stagedBlank), rp9Axvg);
     const writtenBytes = mergePages([{ buf: sceneBytes, name: page || '图片还原页' }]);
     writeFileSync(stagedRp, writtenBytes);
@@ -2051,7 +2019,7 @@ let outPng = CommandLine.arguments[2]
 let title = URL(fileURLWithPath: rp).deletingPathExtension().lastPathComponent
 let p = Process()
 p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-p.arguments = ["-b", "com.axure.AxureRP9", rp]
+p.arguments = ["-b", "${versionSpec(version).bundleId}", rp]
 try p.run(); p.waitUntilExit()
 var winId: Int? = nil
 for _ in 0..<40 {
@@ -2060,7 +2028,7 @@ for _ in 0..<40 {
     for w in all {
         let owner = w[kCGWindowOwnerName as String] as? String ?? ""
         let name = w[kCGWindowName as String] as? String ?? ""
-        if owner == "Axure RP 9" && name.contains(title) {
+        if owner == "${versionSpec(version).processName}" && name.contains(title) {
             winId = w[kCGWindowNumber as String] as? Int
             break
         }
@@ -2074,7 +2042,7 @@ if let wid = winId {
     cap.arguments = ["-x", "-l", String(wid), outPng]
     try cap.run(); cap.waitUntilExit()
 }
-if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.axure.AxureRP9" }) {
+if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "${versionSpec(version).bundleId}" }) {
     let axApp = AXUIElementCreateApplication(app.processIdentifier)
     var v: CFTypeRef?
     if AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &v) == .success, let wins = v as? [AXUIElement] {
@@ -2127,7 +2095,8 @@ if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIden
     });
     const baselinePath = `${output}.baseline.json`;
     const baselinePayload = {
-      schemaVersion: 'rp1-baseline/1',
+      schemaVersion: 'rp1-baseline/2',
+      formatVersion: 2, targetVersion: version, delivery: 'file',
       originKind: 'image-trace-spec',
       createdAt: new Date().toISOString(),
       imagePath: refSource,
@@ -2140,7 +2109,7 @@ if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIden
       outputRp: output,
       rpSha256: outSha256,
       scale: traceSpec.scale ?? effectiveScale,
-      version: 9,
+      version,
       pageName: rp.pages[0]?.name ?? page,
       sourceMap,
       reviewRegions: rp9Meta.reviewRegions ?? {},
@@ -2151,8 +2120,8 @@ if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIden
 
     return {
       status: 'completed',
-      backend: 'rp9-native-scene',
-      version: 9,
+      backend: `rp${version}-native-scene`,
+      version, targetVersion: version, formatVersion: 2, delivery: 'file',
       output,
       sha256: outSha256,
       baseline: baselinePath,
@@ -2411,12 +2380,12 @@ export const sessionTools = [
   ...authoringTools({ generate: generatePrototype, sync: syncPrototype, listTools: () => [...listMcpTools(), ...jobTools] }),
   {
     name: 'generate_prototype',
-    description: '一次生成完整单页/多页原生 RP9 原型：spec 直接传 RP/1 结构化页面（或 .rp1/.json 文件路径）、共享 theme/palette/components、variables 与交互，自动编译、装配和检查跨页引用及事件覆盖，并记录 <output>.baseline.json 共同基线；无需装配脚本。若提供 baseRp 且检测到原生已改稿，自动按 prefer 执行三方合并或冲突保护。output 为 .rp 路径（相对路径基于 AXURE_WRITE_ROOT 或当前工作目录解析）。',
+    description: '生成 RP9/RP11 基础原型；高级能力按目标后端检查：spec 直接传 RP/1 结构化页面（或 .rp1/.json 文件路径）、共享 theme/palette/components、variables 与交互，自动编译、装配和检查跨页引用及事件覆盖，并记录 <output>.baseline.json 共同基线；无需装配脚本。若提供 baseRp 且检测到原生已改稿，自动按 prefer 执行三方合并或冲突保护。output 为 .rp 路径（相对路径基于 AXURE_WRITE_ROOT 或当前工作目录解析）。',
     inputSchema: { type: 'object', properties: {
       recipe: { type: 'string', enum: ['mobile-cards', 'list-detail', 'step-form'], description: '从完整范例直接生成；与 spec/source 二选一。成功后在 .rp 旁保留独立 .rp1 源码。' },
       spec: { description: 'RP/1 内联对象或 .rp1/.json 文件路径。文件输入优先使用 source；二者互斥。', oneOf: [
         { type: 'string', minLength: 1 }, { type: 'object', properties: {
-        language: { type: 'string', enum: ['rp/1', 'RP/1'] }, target: { type: 'integer', enum: [9] },
+        language: { type: 'string', enum: ['rp/1', 'RP/1'] }, target: { type: 'integer', enum: [9, 11] },
         domain: { type: 'string', enum: ['mobile', 'web', 'doc', 'test'] },
         device: { type: 'string' }, shell: { oneOf: [{ type: 'boolean' }, { type: 'string' }] },
         theme: { type: 'string' }, palette: { type: 'object' }, tokens: { type: 'object' },
@@ -2431,9 +2400,9 @@ export const sessionTools = [
       strictAudit: { type: 'boolean', description: 'true 时额外要求美学审计通过；结构检查始终执行。' },
       autoHeal: { type: 'boolean', description: '默认 false，与 CLI 一致。true 时尝试布局自愈；完整重验后回退引入新错误的变更，审计记录接受与回退详情。' },
       variants: { type: 'array', maxItems: 4, description: '可选：一次额外编译多个主题/色板变体并返回对比拼图（每项为主题名字符串或 {id, name, theme, palette, tokens}）。', items: { oneOf: [{ type: 'string', minLength: 1 }, { type: 'object' }] } },
-      overwrite: { type: 'boolean', description: '可选：为 true 时允许覆盖已存在的无原生漂移 .rp 文件，默认 false。' },
       compact: { type: 'boolean', description: '默认 true：返回成品、源码、预览、验证状态及完整报告路径。false 展开中间产物和事件覆盖信息。' },
-      template: { type: 'string', minLength: 1, description: '可选：显式指定 RP9 空白模板 .rp 路径（沙箱环境下无需重启 MCP 即可指定模板）。' },
+      targetVersion: { type: 'integer', enum: [9, 11], description: '调用参数优先于源码 target，缺省为 RP9。' },
+      template: { type: 'string', minLength: 1, description: '可选：显式指定目标版本空白模板 .rp 路径（沙箱环境下无需重启 MCP 即可指定模板）。' },
       baseRp: { type: 'string', minLength: 1, description: '可选：已有 .rp 路径；若检测到原生改稿则自动走三方合并而非静默覆盖。' },
       prefer: { type: 'string', enum: ['fail', 'source', 'native'], description: '当 baseRp 有原生改稿且出现同属性冲突时的策略，默认 fail。' },
       resolutions: { type: 'object', description: '可选：按冲突键（logicalId:prop 或 pointer:prop）指定 source/native/{value}。' },
@@ -2444,6 +2413,7 @@ export const sessionTools = [
     name: 'sync_prototype',
     description: '源码（RP/1 .rp1/.json 或内联 spec）、MCP 原生改稿与 Axure GUI 改稿三方一致性同步工具。支持 status（检查源码与原生 .rp 是否漂移）、lift（将原生文字/几何/样式/改名/增删元件/交互提取回 RP/1 源码）、merge（基于共同基线做源码与原生改稿三方合并并可输出合并后 .rp 与源码）及 rebuild（带原生改稿防覆盖保护的重建）。默认返回精简变更摘要（summary/lifted*/preserved*）与输出文件路径，避免内联完整源码撑爆上下文；如需在返回 JSON 中内联完整 spec/rp1，可传 includeSpec=true。',
     inputSchema: { type: 'object', properties: {
+      targetVersion: { type: 'integer', enum: [9, 11], description: '必须与已有工程和基线版本一致。' },
       mode: { type: 'string', enum: ['status', 'lift', 'merge', 'rebuild'], description: '同步模式：status 检查状态，lift 导回源码，merge 三方合并，rebuild 受保护重建。默认 merge。' },
       source: { type: 'string', minLength: 1, description: 'RP/1 源码路径（.rp1 或 .json，别名 sourcePath）；省略时尝试从基线读取。' },
       sourcePath: { type: 'string', minLength: 1, description: 'RP/1 源码路径（同 source）。' },
@@ -2469,12 +2439,13 @@ export const sessionTools = [
   },
   {
     name: 'generate_from_image',
-    description: '高层图片转原型入口：从本地 UI 截图（或已提取的分层 spec）自动执行 Apple Vision OCR、几何卡片/分割线/图标媒体切片识别、可选文案替换（replace），并在 RP9 下直接写出真实可编辑二进制 .rp（文字、矩形、卡片、圆、分割线为独立原生元件，复杂矢量/图表/裁剪媒体为独立透明 PNG ImageBox，素材持久保存在 <output>.assets 目录），同时记录 <output>.baseline.json 与分层校验摘要。',
+    description: '高层图片转原型入口：从本地 UI 截图（或已提取的分层 spec）自动执行 Apple Vision OCR、几何卡片/分割线/图标媒体切片识别、可选文案替换（replace），并按目标 RP9/RP11 直接写出真实可编辑二进制 .rp（文字、矩形、卡片、圆、分割线为独立原生元件，复杂矢量/图表/裁剪媒体为独立透明 PNG ImageBox，素材持久保存在 <output>.assets 目录），同时记录 <output>.baseline.json 与分层校验摘要。',
     inputSchema: { type: 'object', properties: {
       image: { type: 'string', minLength: 1, description: '本地截图文件绝对路径（PNG/JPG）。' },
       spec: { oneOf: [{ type: 'string', minLength: 1 }, { type: 'object' }], description: '可选：已校对的分层 trace spec 路径或对象（用于二次校对后重建）。' },
       output: { type: 'string', minLength: 1, description: '新生成的二进制 .rp 绝对路径（只写新文件，不覆盖）。' },
-      version: { type: 'integer', enum: [9, 11], description: '目标 Axure 版本，默认 9（直接写二进制 .rp）；11 生成 .axvg.json 并需 GUI 粘贴。' },
+      targetVersion: { type: 'integer', enum: [9, 11], description: '目标 Axure 版本，默认 9，直接写出文件。' },
+      template: { type: 'string', minLength: 1 },
       scale: { type: 'number', minimum: 0.25, maximum: 4, description: '截图逻辑像素缩放比（如 1 表示 1x，2 表示 Retina 2x）；省略时默认 2。' },
       page: { type: 'string', minLength: 1, description: '生成的目标页面/画板名称，默认「图片还原页」。' },
       replace: {
@@ -2490,7 +2461,6 @@ export const sessionTools = [
       baseRp: { type: 'string', minLength: 1, description: '可选：上次生成的 .rp 路径；若检测到已有原生改稿且 prefer=fail，则拒绝静默覆盖。' },
       prefer: { type: 'string', enum: ['fail', 'source', 'native'], description: '当 baseRp 有原生改稿时的保护策略，默认 fail。' },
       preview: { oneOf: [{ type: 'boolean' }, { type: 'string', minLength: 1 }], description: '可选：传入真实 Axure 预览截图路径（或布尔值）进行宿主预览与薄页/原图的像素差分。' },
-      guiPaste: { type: 'boolean', description: '当 version=11 时是否立即执行 Axure RP 11 GUI 粘贴，默认 false。' },
     }, required: ['output'], additionalProperties: false },
     handler: sessionHandlers.generate_from_image,
   },

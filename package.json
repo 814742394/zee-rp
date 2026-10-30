@@ -41,7 +41,8 @@
     "test:report": "python3 -B test/report-regressions-check.py && node test/report-mcp-check.mjs",
     "test:report-round3": "node test/report-round3-check.mjs",
     "test:styles": "node test/custom-styles-check.mjs",
-    "test:polish": "python3 -B test/visual-polish-check.py"
+    "test:polish": "python3 -B test/visual-polish-check.py",
+    "test:targets": "node test/dual-target-check.mjs"
   },
   "optionalDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1"
@@ -315,7 +316,16 @@
     "assets/readme/qiyu-home.png",
     "assets/readme/qiyu-species.png",
     "assets/readme/qiyu-journal.png",
-    "assets/readme/README.md"
+    "assets/readme/README.md",
+    "scripts/target-context.mjs",
+    "scripts/backends/index.mjs",
+    "scripts/capabilities.mjs",
+    "scripts/backends/rp9.mjs",
+    "scripts/backends/rp11.mjs",
+    "test/dual-target-check.mjs",
+    "examples/rp-language/dual-target-basic.json",
+    "docs/dual-target-architecture.md",
+    "docs/dual-target-validation.json"
   ],
   "repository": {
     "type": "git",

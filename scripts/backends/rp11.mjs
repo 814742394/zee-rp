@@ -1,0 +1,1 @@
+export default Object.freeze({ version: 11, inputLibraryPage: 'Text field', inputTypes: { text: 0, password: 1 }, widgetFields: { Error: false }, richTextVersion: { Major: 11, Minor: 0, Build: 1, Revision: 0 } });

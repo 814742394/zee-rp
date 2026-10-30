@@ -13,10 +13,10 @@ import { DEFAULT_VERSION, detectFileVersion, tryDetectFileVersion, resolveTarget
 //   版本 11 -> AXURE_BLANK_TEMPLATE_RP11 或 ~/Library/Application Support/zee-axure/templates/axure-rp11-blank.rp
 // 旧变量 AXURE_BLANK_TEMPLATE 仍被接受，但会校验文件头版本是否等于目标版本，
 // 避免把 RP 11 的空白 Page 导进 RP 9 工程（或反过来）。
-export function resolveBlankTemplate(version = DEFAULT_VERSION) {
+export function resolveBlankTemplate(version = DEFAULT_VERSION, explicitTemplate) {
   const target = resolveTargetVersion(version);
-  const candidates = templateCandidates(target);
-  if (process.env.AXURE_BLANK_TEMPLATE) {
+  const candidates = explicitTemplate ? [{ path: explicitTemplate, from: 'template' }] : templateCandidates(target);
+  if (!explicitTemplate && process.env.AXURE_BLANK_TEMPLATE) {
     candidates.unshift({ path: process.env.AXURE_BLANK_TEMPLATE, from: 'AXURE_BLANK_TEMPLATE' });
   }
 

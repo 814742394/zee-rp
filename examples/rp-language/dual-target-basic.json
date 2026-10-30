@@ -1,0 +1,194 @@
+{
+  "language": "rp/1",
+  "target": 9,
+  "name": "Dual target basic",
+  "variables": {
+    "status": {
+      "type": "text",
+      "value": "ready"
+    }
+  },
+  "pages": [
+    {
+      "id": "home",
+      "name": "Home",
+      "canvas": {
+        "w": 420,
+        "h": 720
+      },
+      "root": {
+        "type": "box",
+        "id": "root",
+        "layout": "column",
+        "padding": 24,
+        "gap": 12,
+        "w": 420,
+        "h": 720,
+        "children": [
+          {
+            "type": "image",
+            "id": "icon",
+            "src": "../../assets/mobile-primitives/icons/icon-search.png",
+            "w": 24,
+            "h": 24
+          },
+          {
+            "type": "label",
+            "id": "message",
+            "text": "Ready",
+            "w": 340,
+            "h": 32
+          },
+          {
+            "type": "input",
+            "id": "account",
+            "value": "demo",
+            "w": 340,
+            "h": 44
+          },
+          {
+            "type": "input",
+            "id": "secret",
+            "inputType": "password",
+            "value": "",
+            "w": 340,
+            "h": 44
+          },
+          {
+            "type": "button",
+            "id": "change",
+            "text": "Change",
+            "w": 340,
+            "h": 44,
+            "onClick": [
+              {
+                "type": "set-text",
+                "target": {
+                  "ref": "message"
+                },
+                "text": "Updated"
+              },
+              {
+                "type": "set-variable",
+                "variable": "status",
+                "value": "updated"
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "id": "disable",
+            "text": "Disable",
+            "w": 340,
+            "h": 44,
+            "onClick": [
+              {
+                "type": "disable",
+                "target": {
+                  "ref": "account"
+                }
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "id": "enable",
+            "text": "Enable",
+            "w": 340,
+            "h": 44,
+            "onClick": [
+              {
+                "type": "enable",
+                "target": {
+                  "ref": "account"
+                }
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "id": "hide",
+            "text": "Hide",
+            "w": 340,
+            "h": 44,
+            "onClick": [
+              {
+                "type": "hide",
+                "target": {
+                  "ref": "message"
+                }
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "id": "show",
+            "text": "Show",
+            "w": 340,
+            "h": 44,
+            "onClick": [
+              {
+                "type": "show",
+                "target": {
+                  "ref": "message"
+                }
+              }
+            ]
+          },
+          {
+            "type": "button",
+            "id": "next",
+            "text": "Next",
+            "w": 340,
+            "h": 44,
+            "onClick": [
+              {
+                "type": "link",
+                "page": "detail"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "detail",
+      "name": "Detail",
+      "canvas": {
+        "w": 420,
+        "h": 300
+      },
+      "root": {
+        "type": "box",
+        "id": "root",
+        "layout": "column",
+        "padding": 24,
+        "gap": 12,
+        "w": 420,
+        "h": 300,
+        "children": [
+          {
+            "type": "label",
+            "id": "title",
+            "text": "Detail",
+            "w": 340,
+            "h": 32
+          },
+          {
+            "type": "button",
+            "id": "back",
+            "text": "Back",
+            "w": 340,
+            "h": 44,
+            "onClick": [
+              {
+                "type": "link",
+                "page": "home"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

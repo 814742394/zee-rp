@@ -3,9 +3,10 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readRecords, encodeRecord, replaceRecord } from './rp-records.mjs';
 import { parsePayload, encodePayload, field, walkNodes } from './parse-payload.mjs';
 import { detectFileVersion } from './version.mjs';
+import { getBackend } from './backends/index.mjs';
 
 export function writeNativeScene(file, scene) {
-  if (detectFileVersion(file) !== 9) throw new Error('Native scene backend requires RP 9');
+  const backend = getBackend({ targetVersion: detectFileVersion(file) });
   const records = readRecords(file);
   const record = records.find(r => r.className === 'Axure:Page');
   const graph = parsePayload(record), strings = [...record.strings];
@@ -144,7 +145,7 @@ export function writeNativeScene(file, scene) {
       });
     });
     return map({ '*type': str('rich-text-block'),
-      'attributed-string': map({ Version: map({ Major: int(9), Minor: int(0), Build: int(1), Revision: int(0) }), Paragraphs: list(paragraphs) }),
+      'attributed-string': map({ Version: map({ Major: int(backend.richTextVersion.Major), Minor: int(0), Build: int(1), Revision: int(0) }), Paragraphs: list(paragraphs) }),
       'property-dictionary': map({ type: str('rich-text-object'), 'diagram-object-label': str(item.name),
         'text-object-id': guid(id), 'parent-diagram-id': guid(diagram.id) }),
     });
@@ -174,6 +175,7 @@ export function writeNativeScene(file, scene) {
       MyStyle: ref(styleId), AdaptiveStyles: list([]), SubmitButton: ref(nullId),
       Disabled: bool(false), Selected: bool(false), VisibleFromSettings: bool(item.visible !== false),
     };
+    for (const [key, value] of Object.entries(backend.widgetFields)) body[key] = bool(value);
     const widget = obj(id, `Axure:DiagramObject:${kind}`, body);
     style(styleId, item, kind);
     field(diagram.body, 'diagram-objects').items.push(ref(id));

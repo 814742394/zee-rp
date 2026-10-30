@@ -1,3 +1,5 @@
+import { generationCapabilities } from './capabilities.mjs';
+import { validateBaseline } from './target-context.mjs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { constants, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,7 +17,7 @@ const fileHash = path => { assertNotProtected(path); return digest(readFileSync(
 const startedAt = new Date().toISOString();
 export const packageVersion = JSON.parse(readFileSync(join(ROOT, 'package.json'))).version;
 function implementation() {
-  const files = ['package.json', ...['scripts', 'bin', 'examples/authoring'].filter(dir => existsSync(join(ROOT, dir)))
+  const files = ['package.json', ...['scripts', 'scripts/backends', 'bin', 'examples/authoring'].filter(dir => existsSync(join(ROOT, dir)))
     .flatMap(dir => readdirSync(join(ROOT, dir)).filter(f => /\.(mjs|py|rp1)$/.test(f)).sort().map(f => `${dir}/${f}`))];
   return Object.fromEntries(files.map(file => [file, fileHash(join(ROOT, file))]));
 }
@@ -115,8 +117,8 @@ export function runtimeInfo(toolList) {
     restartRequired: changedFiles.length > 0, changedFiles,
     toolCount: toolList.length, toolSchemaHash: digest(JSON.stringify(toolList)),
     python: pythonEnvironment(),
-    host: { platform: process.platform, node: process.version, nativeTarget: 9,
-      axureInstalled: appExists(9), blankTemplate: templateCandidates(9).find(c => existsSync(c.path))?.path ?? null },
+    host: { platform: process.platform, node: process.version, nativeTargets: [9, 11], capabilities: generationCapabilities,
+      targets: [9, 11].map(targetVersion => ({ targetVersion, axureInstalled: appExists(targetVersion), blankTemplate: templateCandidates(targetVersion).find(c => existsSync(c.path))?.path ?? null })) },
     nextAction: changedFiles.length ? '磁盘实现已变化，请重新连接 MCP 以加载一致版本；Python 子进程每次读取磁盘实现。'
       : '当前服务与磁盘指纹一致（含 scripts/*.mjs 与 scripts/*.py 编译器）。若客户端缺少工具，重新连接以刷新工具清单。' };
 }
@@ -139,6 +141,7 @@ export function revisePrototype(input, { generate, sync }) {
   assertNotProtected(sourcePath); assertNotProtected(rpPath);
   if (!existsSync(`${rpPath}.baseline.json`))
     throw Object.assign(new Error('缺少共同基线；请先使用 generate_prototype 创建带基线的工程，或对已有文件使用原生编辑工具。'), { code: 'E_BASELINE_MISSING' });
+  const context = validateBaseline(JSON.parse(readFileSync(`${rpPath}.baseline.json`, 'utf8')), rpPath, input.targetVersion);
   const originalHashes = new Map([sourcePath, rpPath, `${rpPath}.baseline.json`].map(path => [path, fileHash(path)]));
   if (expectedRpSha256 && originalHashes.get(rpPath) !== expectedRpSha256)
     throw Object.assign(new Error('原型已变化，请读取最新状态后重试。'), { code: 'E_STALE_SYNC_STATE' });
@@ -184,7 +187,7 @@ export function revisePrototype(input, { generate, sync }) {
     const summary = { status: dryRun ? 'planned' : 'completed', impact: patched.diff, sync: merged.summary,
       operations: patched.operations, restoredTokenReferences: restored.restoredTokenReferences, originalFilesPreserved: true };
     if (dryRun) return { ...summary, verification: { semantic: true, nativePreview: false } };
-    const built = generate({ source: mergedSource, output: join(stage, 'result.rp'), compact: false });
+    const built = generate({ targetVersion: context.targetVersion, source: mergedSource, output: join(stage, 'result.rp'), compact: false });
     if (built.status !== 'completed') return built;
     for (const [path, hash] of originalHashes) if (fileHash(path) !== hash)
       throw Object.assign(new Error(`改稿过程中输入已被修改：${path}`), { code: 'E_CONCURRENT_MODIFICATION' });
@@ -274,6 +277,7 @@ export function authoringTools({ generate, sync, listTools }) {
           index: { oneOf: [{ type: 'integer', minimum: 0 }, { type: 'string' }] },
           property: { type: 'string', minLength: 1 }, path: { type: 'string' }, value: {}, node: {}, oldValue: {},
         }, additionalProperties: false } },
+        targetVersion: { type: 'integer', enum: [9, 11] },
         async: { type: 'boolean', description: 'stdio MCP 中 true 立即返回 revise-prototype 任务句柄，使用 jobs_get 查询；支持 dryRun。' }, dryRun: { type: 'boolean' }, prefer: { type: 'string', enum: ['fail', 'source', 'native'] }, resolutions: { type: 'object' },
         expectedHash: { type: 'string' }, expectedRpSha256: { type: 'string' },
       }, required: ['source', 'rp', 'operations'], additionalProperties: false },

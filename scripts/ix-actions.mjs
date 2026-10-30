@@ -10,6 +10,8 @@ import { readRecords, encodeRecord, replaceRecord } from './rp-records.mjs';
 import { parsePayload, encodePayload, field, walkNodes } from './parse-payload.mjs';
 import { detectFileVersion, resolveTargetVersion } from './version.mjs';
 import { RP9_ENABLE_VALUES, RP11_ONLY_FCALLS, RP11_ONLY_EVENTS } from './version-fields.mjs';
+import { targetContext } from './target-context.mjs';
+import { RP11_ONLY_KEYS } from './version-fields.mjs';
 import { adaptNodesForVersion } from './version-adapt.mjs';
 
 // Complete FCall function registry recovered statically from
@@ -194,7 +196,7 @@ export function pageWidgetContexts(file, pageName) {
 export function addInteractions(file, target, interactions, { replaceEvent = false, version } = {}) {
   if (!Array.isArray(interactions) || !interactions.length) throw new Error('No interactions given');
   // 写侧编码必须跟随「这个文件自己的版本」，不是本机装的哪个 Axure。
-  const targetVersion = version !== undefined ? resolveTargetVersion(version) : resolveTargetVersion(detectFileVersion(file));
+  const targetVersion = targetContext({ targetVersion: version, file }).targetVersion;
   // target 三种形态：
   //   'WidgetName'                      全局按名找 widget（重名报错并列候选）
   //   { page: 'PageName' }              页面级交互
@@ -260,6 +262,10 @@ export function addInteractions(file, target, interactions, { replaceEvent = fal
   const defs = [];
   const versionAdaptations = [];   // 本次为适配目标版本所做的编码改动（进 report，避免被当成宿主通过）
   const obj = (id, className, props) => {
+    if (targetVersion === 9) {
+      const omitted = new Set(RP11_ONLY_KEYS[className.replace(/^Axure:/, '')] ?? []);
+      props = Object.fromEntries(Object.entries(props).filter(([key]) => !omitted.has(key)));
+    }
     const node = { tag: 9, id, classIndex: str(className).value, className, body: map(props) };
     defs.push(node);
     return node;
