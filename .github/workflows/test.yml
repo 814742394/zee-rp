@@ -21,6 +21,14 @@ jobs:
       - name: Check browser runtime
         run: test -x /usr/bin/google-chrome
       - run: npm test
+      - run: npm run test:mcp-connect
+      - name: Connect to the installed npm package
+        if: matrix.node == 22
+        run: |
+          package_dir=$(mktemp -d)
+          package_file=$(npm pack --ignore-scripts --pack-destination "$package_dir" --json | node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8"))[0].filename')
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$package_dir/install" "$package_dir/$package_file"
+          ZEE_MCP_ENTRY="$package_dir/install/node_modules/zee-rp/bin/mcp.mjs" npm run test:mcp-connect
       - run: npm run test:styles
       - run: npm run test:sync
       - run: npm run test:studio-ai

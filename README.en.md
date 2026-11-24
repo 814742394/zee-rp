@@ -23,6 +23,14 @@
 
 <br>
 
+## Connect your agent
+
+zee-rp provides a local MCP server and a CLI to read and edit Axure RP9/RP11 projects and generate editable `.rp` files from RP/1 source. Start with `runtime_info` to check the template and capabilities for your target, then call `generate_prototype` or `rp_read`. Open Studio when you want to work together on a browser canvas.
+
+[Install](#quickstart) · [MCP configuration](docs/integrations/mcp.example.json) · [RP9/RP11 architecture](docs/dual-target-architecture.md)
+
+<br>
+
 <a id="studio"></a>
 
 ## 01　Make room for refinement.
@@ -82,7 +90,7 @@ Generate a native **`.rp`** and continue editing supported text, controls and la
 
 ## Get started
 
-Install **Node.js 18+** and **Python 3.10+**. Native generation additionally needs local Axure resources and your own single-page blank project saved in RP9.
+Install **Node.js 18+** and **Python 3.10+**. Native generation needs a single-page blank project saved in the target version. Some native widgets also require local Axure resources.
 
 ### macOS
 
@@ -110,7 +118,7 @@ $env:ZEE_PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
 npm.cmd ci
 ```
 
-- The generator needs a one-page, zero-widget RP9 project saved by your own Axure; set `AXURE_BLANK_TEMPLATE_RP9` to it.
+- Save a one-page, zero-widget project in your target Axure version and set `AXURE_BLANK_TEMPLATE_RP9` or `AXURE_BLANK_TEMPLATE_RP11`.
 - Axure is auto-detected in common install directories and drive-root portable installs (`C:\AxureRP9.exe`, `D:\AxureRP9.exe`). Override with `AXURE_APP_RP9`; point at `DefaultSettings` with `AXURE_INSTALL_ROOT_RP9` (install root) or `AXURE_DEFAULT_SETTINGS_RP9` (direct path).
 - Multi-path environment variables use `;` on Windows (`AXURE_PROTECTED_PATHS`, `AXURE_WRITE_ROOT`).
 - RP/1 uses the native backend by default. Pass `--backend native` for older specs with `build-rp` or `generate`. The GUI backend, macOS menu automation and `tools/rp9_place.py` are macOS-only. `axvg paste` writes the payload to the Windows clipboard. Press Ctrl+V in Axure.
@@ -127,31 +135,11 @@ node scripts/proto.mjs generate --spec examples/authoring/mobile-cards.rp1 --out
 
 Open `output/mobile-cards.rp` in Axure RP9 to edit it.
 
-<details>
-<summary><b>Connect your MCP client</b> · Expand configuration</summary>
+### Connect MCP
 
-Replace the absolute paths with your installation, Python environment and RP9 blank project:
+Use the [MCP configuration](docs/integrations/mcp.example.json) for your client. Replace the paths for Node, Python, the output directory and each installed target template. Start with `runtime_info`, then run the [shared RP9/RP11 example](examples/rp-language/dual-target-basic.json) with `generate_prototype`.
 
-```json
-{
-  "mcpServers": {
-    "zee-rp": {
-      "command": "node",
-      "args": ["/absolute/path/zee-rp/bin/mcp.mjs"],
-      "env": {
-        "ZEE_PYTHON": "/absolute/path/zee-rp/.venv/bin/python",
-        "AXURE_BLANK_TEMPLATE_RP9": "/absolute/path/my-rp9-blank.rp"
-      }
-    }
-  }
-}
-```
-
-The example uses macOS paths. On Windows, use paths such as `C:/work/zee-rp/bin/mcp.mjs`, `C:/work/zee-rp/.venv/Scripts/python.exe` and `C:/AxureTests/blank.rp` in the corresponding fields. Use an absolute Node path in `command` if needed. Reconnect MCP after updates.
-
-</details>
-
-Call `studio_open_project` and open the returned `url`:
+To use the optional Studio canvas, call `studio_open_project` and open the returned `url`:
 
 ```json
 { "projectDir": "/absolute/path/my-first-prototype" }
@@ -166,7 +154,7 @@ Then give your agent a brief:
 
 Agents start with `studio_describe({"topic":"workflow"})`. Use `sourcePath` in `studio_open_project` to import RP/1, and `generate_prototype` for full native generation. Local authoring and full compilation have separately documented scopes.
 
-Native generation targets RP9; file tools handle RP9 / RP11 by version. Host evidence mainly covers macOS + Axure RP9. Some effects use embedded raster assets; fonts and previews depend on the host. Fractional-zoom sharpness and very large single boards remain bounded.
+Native generation defaults to RP9. See the [target architecture](docs/dual-target-architecture.md) for basic RP11 generation and file editing. Host evidence mainly covers macOS + Axure RP9. Some effects use embedded raster assets; fonts and previews depend on the host. Fractional-zoom sharpness and very large single boards remain bounded.
 
 Structure, browser behavior and Axure save/reopen are separate checks. [Capabilities](references/capabilities.md) · [Acceptance layers](docs/studio-acceptance.md) · [Troubleshooting](references/troubleshooting.md)
 

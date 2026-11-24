@@ -69,7 +69,9 @@
     "test:layers": "node tools/check-layers.mjs",
     "test:rp9": "node test/rp9-core-check.mjs",
     "test:rp9-native": "node test/rp9-native-check.mjs",
-    "test:targets": "node test/dual-target-check.mjs"
+    "test:targets": "node test/dual-target-check.mjs",
+    "test:mcp-connect": "node test/mcp-connect-check.mjs",
+    "test:mcp-targets": "node test/mcp-connect-check.mjs --native"
   },
   "optionalDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
@@ -660,6 +662,11 @@
     "scripts/backends/rp9.mjs",
     "scripts/backends/rp11.mjs",
     "test/dual-target-check.mjs",
+    "test/mcp-connect-check.mjs",
+    "tools/install-agent-skill.mjs",
+    "docs/integrations/README.md",
+    "docs/integrations/deepseek-harness.md",
+    "docs/integrations/mcp.example.json",
     "examples/rp-language/dual-target-basic.json",
     "docs/dual-target-architecture.md",
     "docs/dual-target-validation.json",

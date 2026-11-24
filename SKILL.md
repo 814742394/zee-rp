@@ -7,6 +7,10 @@ description: Reconstruct screenshots as editable Axure layouts, compile RP/1 spe
 
 完整 RP/1 与 Studio 画布均支持原生表单与交互样式（2026-11-12 本机开发快照）：`radio` / `checkbox` / `combobox`（别名 `select` / `droplist`）/ `listbox` / `textarea`（及 `input multiline=true`；浏览器与代码出口渲染多行 `<textarea>`，导出 `.rp` 时映射为原生可编辑 `TextBox` 并在兼容报告记录 `input.multiline`），支持勾选、互斥组、选项初值、原生取值和重置；完整 RP/1 还支持 `styles={"hover":{...},"selected":{...},"disabled":{...},"focused":{...}}` 写入原生状态样式。动作支持 `set-check`、普通元件 `set-selected`、下拉/列表 `set-option`（均支持 `"toggle"`），详情与完整四页例子见 [原生表单](references/native-forms.md)。
 
+## 通过 MCP 或 CLI 使用 Axure
+
+先调用 `runtime_info` 检查 RP9/RP11 模板、Python 和该版本的文件生成能力。直接交付 `.rp` 用 `generate_prototype` 并指定 `targetVersion`；检查已有工程用 `rp_read`。仅在需要浏览器画布时打开 Studio。安装和双版本验证见 [Agent 接入指南](docs/integrations/README.md)。
+
 ## Studio 新作品：先设计，再看图改稿
 
 新稿可用 `studio_stage({stage:"planning",intent,platform,target:{pageId},brief})` 一次取得版本绑定目标、适合任务的完整参考和下一步；局部改字使用 `stage:"edit"` 与版本绑定的明确目标。设计决定通过普通命令 `recordDesignDecision` 与改稿一起持久化，保留反馈来源及过期/冲突状态。详见 [阶段创作与设计决定](docs/studio-stages.md)。
@@ -78,7 +82,7 @@ Studio 开发版本的验收层级、真实浏览器/Axure操作与字体边界�
 - **尺寸铁律**：纵向容器、卡片、多行文本、动态面板、中继器一律写 **`[fillxhug]`**（宽铺满、高按内容自动测量；`panel` 自动取最高 `:state` 高度），按钮/输入框写 **`[fillx44]`** 或 **`[120x44]`**。节点 ID 前的 `#` 可写可省略。
 - **属性边界与零静默丢参约定**：`fontSize` 范围为 `(0,120]`（含字号简写与 spans），`letterSpacing` 非负；`after` 必须引用同容器中的另一个节点，不存在会报 `E_REFERENCE`。未知属性、未知宏插槽名（`slots`）、`progress-bar` 同时声明 `percent` 与 `value`、以及对非 `enum` 字段声明 `filters: "auto"` 均返回 `E_PROPERTY` 错误，任何无法生效的声明或守卫（如 `wizard-card` 的 `nextWhen`）绝不静默丢弃。
 - **列表条目一律用 `:item` 行，不要写 `items=[{...}]`**：`kv-list` / `detail-card` 写内联 JSON 会报 `Unknown property 'children'`（`candidatePatches` 建议改名为 `hidden` 是误导，别照做）。`stat-row` 的 `items=[...]` 合法，但为一致性和少踩坑，**统一用 `:item` 缩进行**；`data-table` 用 `:col`、`form-card` 用 `:field`、`searchable-list` 用 `:template`/`:filters`。详见 [故障排查](references/troubleshooting.md)。
-- **手机页高度预算**：`iphone-17` 内容区可用 ≈642px（`y=142`→`y=784`）。写完先用 `check`（0.3 秒）验溢出，不要直接 `generate`。反方向：内容太少会因留白率 >88% 被 `strictAudit` 拦，别交只有一两个元件的空页。
+- **手机页高度预算**：可用区域取决于标题栏、副标题、Tab 栏和留白。先用 `check` 定位溢出。大幅溢出时，优先合并重复区块或减少列表项。单页只需展示底栏时，可用 `phone-shell` 内联 `tabBar`，省略跳转目标。见 [手机布局排障](references/troubleshooting.md#单页展示底栏)。
 - **设备画布**：页面声明 `device=iphone-17`（或顶层声明 `device="iphone-17"`）即可自动匹配 `402×874` 屏幕与 `442×914` 钛金属外壳，**推荐省略页面 `[WxH]`**。
 - **合规设计令牌（`strictAudit: true` 零警告值）**：
   - 间距 `gap` / `padding`：`0, 4, 6, 8, 10, 12, 16, 20, 24, 28, 32, 40, 48`

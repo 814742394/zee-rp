@@ -7,7 +7,8 @@ import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertNotProtected, assertWritable, defaultWriteRoot } from './engine.mjs';
 import { pythonInvocation } from './python.mjs';
-import { appExists, templateCandidates } from './version.mjs';
+import { appExists, installRoot, supportedVersions } from './version.mjs';
+import { inspectBlankProjectTemplate } from './create-blank-project.mjs';
 import { previewPrototype } from './preview-runtime.mjs';
 import { reviewImageStructure } from './image-structure.mjs';
 import { listImplementationFiles } from '../studio/source-fingerprint.mjs';
@@ -122,11 +123,22 @@ export function runtimeInfo(toolList) {
     .filter(path => loadedFiles[path] !== disk[path]);
   const compilerKeys = ['scripts/rp_language.py', 'scripts/rp_dsl.py', 'scripts/proto.py', 'scripts/rp_workflow.py', 'scripts/mcp-tools.mjs', 'scripts/authoring-workflow.mjs'];
   const compilerHashes = Object.fromEntries(compilerKeys.filter(k => disk[k] || loadedFiles[k]).map(k => [k, { loaded: loadedFiles[k] ?? null, disk: disk[k] ?? null }]));
-  const targets = [9, 11].map(targetVersion => ({
-    targetVersion,
-    axureInstalled: appExists(targetVersion),
-    blankTemplate: templateCandidates(targetVersion).find(candidate => existsSync(candidate.path))?.path ?? null,
-  }));
+  const targets = supportedVersions().map(targetVersion => {
+    let template;
+    try {
+      const { template: path, page } = inspectBlankProjectTemplate(targetVersion);
+      template = { status: 'ready', path, page };
+    } catch (error) {
+      template = { status: 'unavailable', code: error.code ?? 'E_TEMPLATE_UNAVAILABLE', message: error.message };
+    }
+    const axureInstalled = appExists(targetVersion);
+    const defaultLibrary = join(installRoot(targetVersion), 'Libraries', 'Default.rplib');
+    return {
+      targetVersion, axureInstalled, template,
+      blankTemplate: template.path ?? null,
+      defaultLibraryAvailable: existsSync(defaultLibrary),
+    };
+  });
   const [defaultTarget] = targets;
   return { status: 'completed', name: 'zee-rp', version: packageVersion, root: ROOT, pid: process.pid, startedAt,
     fingerprint: loadedFingerprint, diskFingerprint: digest(JSON.stringify(disk)),
@@ -313,7 +325,7 @@ export function authoringTools({ generate, sync, listTools }) {
     { name: 'explain_binding', description: '解释 RP/1 文字或进度条绑定的完整表达式、依赖、初始值、实际编译出的刷新事件和显示精度。静态编译关系，不冒充原生运行观测。重名用 page/id 或源码指针。',
       inputSchema: { type: 'object', properties: { source: sourceSchema, target: { type: 'string', minLength: 1 } }, required: ['source', 'target'], additionalProperties: false },
       handler: ({ source, target }) => runWorkflow('binding', source, { target }), readOnly: true },
-    { name: 'runtime_info', description: '读取活动 MCP 版本、启动实现指纹、磁盘差异、工具清单指纹及 RP9 模板可用性；判断是否需要重新连接服务。',
+    { name: 'runtime_info', description: '读取活动 MCP 版本、启动实现指纹、磁盘差异、工具清单指纹以及 RP9/RP11 文件生成能力和模板诊断；判断是否需要重新连接服务。',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false }, handler: () => runtimeInfo(listTools()), readOnly: true },
     { name: 'revise_prototype', description: '一次完成最小源码改稿、原生漂移检查、三方合并、原型生成和共同基线。支持逻辑 ID + property、结构节点增删改（add-node/remove-node/replace-node，value 支持直接传 .rp1 片段或 JSON）或 JSON Pointer 操作；output 省略或传 "auto" 时自动递增生成 -v2.rp；保留输入，输出新的源码与 .rp。冲突默认拒绝，dryRun 只返回影响。',
       inputSchema: { type: 'object', properties: {

@@ -181,6 +181,17 @@ python3 scripts/proto.py check your.rp1   # 布局审计在 check 阶段就报�
 只放一个 label 的空页实测 **94.06%** → `whitespace_ok: fail`。
 所以"先做个最小页试试"这条路在 strictAudit 下走不通，**至少要有 2-3 个内容区块**。
 
+## 单页展示底栏
+
+顶层 `tab-bar:` 的每个目标都必须有对应页面。单页只需展示底栏时，可内联在 `phone-shell` 上，省略 item 的 `goto`，用 item ID 指定高亮项。
+
+```text
+page #mine name="我的" device=iphone-17
+  phone-shell #shell title="我的" subtitle="个人中心" gap=8 tabBar={"type":"tab-bar","id":"nav","active":"nav_mine","activeIndicator":"none","itemFlex":1,"justify":"center","items":[{"id":"nav_home","label":"首页"},{"id":"nav_mine","label":"我的"}]}
+```
+
+旧版「我的」页样例按实际标题栏、Tab 栏和间距测得约 688px。上文的 642px 来自另一份布局。给新页面估算时，以本页的内容起点和底栏起点为准。若整个列表超出可用区，先尝试合并列表容器、减少条目或把多行网格改成单行，再运行 `check` 确认。
+
 ## 粘贴后 Axure 无变化（无报错、大纲无新元件）
 
 最常见原因：**Axure 缓存了剪贴板评估，粘贴菜单处于禁用态**。脚本会写剪贴板并最多刷新焦点两次；仍不可用时明确报错。仍失败时按顺序：

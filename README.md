@@ -23,6 +23,14 @@
 
 <br>
 
+## 接入你的 Agent
+
+zee-rp 提供本地 MCP 服务和 CLI，可以读取、编辑 Axure RP9/RP11 工程，也可以把 RP/1 源稿生成为可编辑的 `.rp`。连接后先调用 `runtime_info` 查看可用模板和目标版本能力，再调用 `generate_prototype` 或 `rp_read`。需要在浏览器里与人一起设计时，可以打开 Studio。
+
+[安装](#quickstart) · [MCP 接入指南](docs/integrations/README.md) · [RP9/RP11 支持范围](docs/dual-target-architecture.md)
+
+<br>
+
 <a id="studio"></a>
 
 ## 01　在画布里，把设计推敲到位。
@@ -82,7 +90,7 @@ page #notes name="手记" device=iphone-17-pro
 
 ## 开始使用
 
-准备 **Node.js 18+** 和 **Python 3.10+**。原生生成另需本机 Axure，以及你自己在 RP9 中保存的单页空白工程。
+准备 **Node.js 18+** 和 **Python 3.10+**。原生生成需要用目标 Axure 版本保存的单页空白工程，部分原生元件还需要该版本的安装资源。
 
 ### macOS
 
@@ -110,7 +118,7 @@ $env:ZEE_PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
 npm.cmd ci
 ```
 
-- 生成器需要你用本机 Axure 保存一个单页、零元件 RP9 工程，并把 `AXURE_BLANK_TEMPLATE_RP9` 指向它。
+- 用目标 Axure 版本保存单页、零元件工程，再设置 `AXURE_BLANK_TEMPLATE_RP9` 或 `AXURE_BLANK_TEMPLATE_RP11`。
 - Axure 会在常见安装目录和盘符根目录的便携版中自动探测（`C:\AxureRP9.exe`、`D:\AxureRP9.exe`）；可用 `AXURE_APP_RP9` 覆盖，用 `AXURE_INSTALL_ROOT_RP9`（安装根目录）或 `AXURE_DEFAULT_SETTINGS_RP9`（直接路径）指向 `DefaultSettings`。
 - 多路径环境变量在 Windows 上用 `;` 分隔（`AXURE_PROTECTED_PATHS`、`AXURE_WRITE_ROOT`）。
 - RP/1 默认使用原生后端。用旧规格调用 `build-rp` 或 `generate` 时需传 `--backend native`。GUI 后端、macOS 菜单自动化与 `tools/rp9_place.py` 仅支持 macOS。`axvg paste` 会把负载写入 Windows 剪贴板，在 Axure 中按 Ctrl+V 粘贴。
@@ -127,31 +135,11 @@ node scripts/proto.mjs generate --spec examples/authoring/mobile-cards.rp1 --out
 
 用 Axure RP9 打开 `output/mobile-cards.rp` 继续编辑。
 
-<details>
-<summary><b>连接你的 MCP 客户端</b> · 展开配置</summary>
+### 连接 MCP
 
-将下面的绝对路径换成自己的安装目录、Python 环境和 RP9 空白工程：
+完整配置、DSH 接入、技能同步和首次调用见 [MCP 接入指南](docs/integrations/README.md)。
 
-```json
-{
-  "mcpServers": {
-    "zee-rp": {
-      "command": "node",
-      "args": ["/absolute/path/zee-rp/bin/mcp.mjs"],
-      "env": {
-        "ZEE_PYTHON": "/absolute/path/zee-rp/.venv/bin/python",
-        "AXURE_BLANK_TEMPLATE_RP9": "/absolute/path/my-rp9-blank.rp"
-      }
-    }
-  }
-}
-```
-
-上面是 macOS 路径示例。Windows 可用 `C:/work/zee-rp/bin/mcp.mjs`、`C:/work/zee-rp/.venv/Scripts/python.exe` 和 `C:/AxureTests/blank.rp` 填写对应字段。Node 不在默认路径时，`command` 也使用绝对路径。安装更新后重新连接 MCP。
-
-</details>
-
-接好后，调用 `studio_open_project`，在浏览器打开返回的 `url`：
+使用可选的 Studio 画布时，调用 `studio_open_project`，在浏览器打开返回的 `url`：
 
 ```json
 { "projectDir": "/absolute/path/my-first-prototype" }
@@ -166,7 +154,7 @@ node scripts/proto.mjs generate --spec examples/authoring/mobile-cards.rp1 --out
 
 Agent 从 `studio_describe({"topic":"workflow"})` 开始。导入已有 RP/1 可为 `studio_open_project` 指定 `sourcePath`；完整原生生成使用 `generate_prototype`。局部创作和完整编译的支持范围分别记录。
 
-原生生成当前以 RP9 为目标，RP9 / RP11 文件工具按版本处理。宿主证据主要来自 macOS + Axure RP9；部分效果采用嵌入位图，字体和预览可能受宿主影响。任意小数缩放清晰度、单画板海量节点仍有边界。
+原生生成默认使用 RP9。RP11 基础生成和已有文件编辑见[双版本支持范围](docs/dual-target-architecture.md)。宿主证据主要来自 macOS + Axure RP9；部分效果采用嵌入位图，字体和预览可能受宿主影响。任意小数缩放清晰度、单画板海量节点仍有边界。
 
 结构检查、浏览器行为与 Axure 保存重开分别验证。[能力范围](references/capabilities.md) · [验收层级](docs/studio-acceptance.md) · [故障排查](references/troubleshooting.md)
 

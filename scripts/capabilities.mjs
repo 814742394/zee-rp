@@ -35,7 +35,28 @@ export const RP9_COMMAND_STATUS = {
   // 需要试这条路线时用 AXURE_ALLOW_RP9_PASTE=1 显式放行，此时只给 unverified 提示。
   'axvg paste': 'blocked',
 };
+const advancedPlanSections = Object.freeze(['dynamicPanels', 'repeaters', 'masters', 'adaptiveViews']);
+const commonActions = Object.freeze(['link', 'set-text', 'show', 'hide', 'enable', 'disable', 'set-variable']);
+const commonEvents = Object.freeze(['click', 'OnClick', 'OnLoad', 'OnTextChange']);
+
+export const fileGenerationLimits = Object.freeze({
+  9: null,
+  11: Object.freeze({
+    unsupportedPlanSections: advancedPlanSections,
+    allowedActions: commonActions,
+    allowedEvents: commonEvents,
+    nativeFormKinds: Object.freeze([]),
+  }),
+});
+
 export const generationCapabilities = Object.freeze(Object.fromEntries([9, 11].map(version => [version, {
+  file: {
+    commonWidgets: ['rectangle', 'rounded-rectangle', 'text', 'group', 'raster-image', 'text-input', 'password-input'],
+    commonActions,
+    commonEvents,
+    limits: fileGenerationLimits[version],
+  },
+  gui: { legacyAssembly: version === 9 && process.platform === 'darwin', roundtrip: process.platform === 'darwin' },
   basic: { support: 'native', implementation: 'implemented', evidence: { structure: false, nativeOpen: false, preview: false, saveReopen: false } },
   advanced: { support: version === 9 ? 'native' : 'unsupported', implementation: version === 9 ? 'implemented' : 'missing', evidence: { structure: false, nativeOpen: false, preview: false, saveReopen: false } },
 }])));

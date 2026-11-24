@@ -9,15 +9,10 @@ import { resolveBlankTemplate } from './blank-template.mjs';
 import { assertNotProtected } from './engine.mjs';
 import { DEFAULT_VERSION, detectFileVersion, resolveTargetVersion } from './version.mjs';
 
-export function createBlankProject(outputPath, { version = DEFAULT_VERSION, template } = {}) {
-  const target = resolveTargetVersion(version);
-  const TEMPLATE = resolveBlankTemplate(target, template);
-  const output = resolve(outputPath);
-  assertNotProtected(output);
-  if (extname(output).toLowerCase() !== '.rp') throw new Error('Output path must end in .rp');
-
-  const templateBytes = readFileSync(TEMPLATE);
-  const summary = readRp(templateBytes, { path: TEMPLATE });
+export function inspectBlankProjectTemplate(target, explicitTemplate) {
+  const template = resolveBlankTemplate(target, explicitTemplate);
+  const templateBytes = readFileSync(template);
+  const summary = readRp(templateBytes, { path: template });
   const records = readRecords(templateBytes);
   for (const record of records.filter(record => record.strings)) {
     const recordVersion = record.raw.readUInt32LE(4);
@@ -32,17 +27,25 @@ export function createBlankProject(outputPath, { version = DEFAULT_VERSION, temp
   if (summary.pages.length !== 1 || summary.counts.widgets !== 0 || summary.counts.panelStates !== 0 || objects.length !== 0) {
     throw new Error('Resolved Axure template is no longer a one-page blank project');
   }
-  copyFileSync(TEMPLATE, output, constants.COPYFILE_EXCL);
   return {
-    output,
     version: detectFileVersion(templateBytes),
-    template: TEMPLATE,
+    template,
     page: summary.pages[0].name,
     pages: summary.counts.pages,
     widgets: summary.counts.widgets,
     panelStates: summary.counts.panelStates,
     bytes: templateBytes.length
   };
+}
+
+export function createBlankProject(outputPath, { version = DEFAULT_VERSION, template } = {}) {
+  const target = resolveTargetVersion(version);
+  const output = resolve(outputPath);
+  assertNotProtected(output);
+  if (extname(output).toLowerCase() !== '.rp') throw new Error('Output path must end in .rp');
+  const inspected = inspectBlankProjectTemplate(target, template);
+  copyFileSync(inspected.template, output, constants.COPYFILE_EXCL);
+  return { output, ...inspected };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

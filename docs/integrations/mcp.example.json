@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "zee-rp": {
+      "command": "node",
+      "args": ["/absolute/path/zee-rp/bin/mcp.mjs"],
+      "env": {
+        "ZEE_PYTHON": "/absolute/path/zee-rp/.venv/bin/python",
+        "AXURE_WRITE_ROOT": "/absolute/path/output",
+        "AXURE_BLANK_TEMPLATE_RP9": "/absolute/path/rp9-blank.rp",
+        "AXURE_BLANK_TEMPLATE_RP11": "/absolute/path/rp11-blank.rp"
+      }
+    }
+  }
+}
