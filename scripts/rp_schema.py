@@ -6,6 +6,8 @@ references, row scope, dataset columns and target-specific behavior support.
 from rp_language import (
     NODE_PROPS, ACTION_PROPS, GEOMETRY, THEMES, EVENTS, EVENT_SHORTHANDS,
     MACRO_PROPS, MACRO_ITEM_PROPS, DEVICE_CANVAS_PRESETS, MAX_FONT_SIZE,
+    OPTION_KINDS, STATE_STYLE_KEYS,
+    CARD_CONTENT_KEYS, CARD_CONTENT_OPTIONS, BOX_TEXT_STYLE_KEYS, BOX_TEXT_CONTAINER_KEYS, NODE_SOURCE_ALIASES,
 )
 
 
@@ -42,6 +44,9 @@ def language_schema():
         obj({"op": {"enum": ["+", "-", "*", "/", "==", "!=", ">", "<", ">=", "<=", "&&", "||"]}, "left": ref("value"), "right": ref("value")}, ["op", "left", "right"]),
         obj({"fn": {"enum": ["text", "number", "not", "lower", "upper", "length", "concat", "contains", "remove"]}, "args": array(ref("value"), 1)}, ["fn", "args"])]}
     defs["value"] = either(ref("runtime"), ref("compileExpression"))
+    runtime_object = {"allOf": [ref("runtime"), {"type": "object"}]}
+    defs["booleanValue"] = either({"type": "boolean"}, {"type": "string", "pattern": "^(?:=(?!=)|\\[\\[)"}, ref("compileExpression"), runtime_object)
+    defs["textValue"] = either(text, ref("compileExpression"), runtime_object)
     numeric = either({"type": "number", "minimum": 0}, {"type": "string", "pattern": "^\\$[A-Za-z_][A-Za-z0-9_.-]*$"}, ref("compileExpression"))
     string_expr = either(text, ref("compileExpression"))
     def enum_expr(choices):
@@ -51,6 +56,7 @@ def language_schema():
         "x": number, "y": number, "w": {"type": "number", "minimum": 0}, "h": {"type": "number", "minimum": 0}})}
     event_value = ref("eventValue")
     common = {"id": ident, "name": text, "on": ref("events"), "font": nonempty, "when": ref("value"), "adaptive": adaptive,
+              "goto": ident, "link": ident, "navigate": ident,
               "size": {"type": "array", "items": ref("size"), "minItems": 2, "maxItems": 2},
               **{k: event_value for k in EVENT_SHORTHANDS},
               **{k: ref("size") if k in {"w", "h"} else string_expr if k == "anchor" else either(number, ref("compileExpression")) if k in {"x", "y", "right", "bottom"} else numeric for k in GEOMETRY}}
@@ -88,7 +94,7 @@ def language_schema():
         "rowHeight": positive_int, "pageSize": positive_int, "rowGap": nonnegative_int,
         "layout": enum_expr(["row", "column", "stack", "grid"]), "justify": enum_expr(["start", "center", "end", "space-between", "space-around", "space-evenly", "around", "evenly"]),
         "native": {"const": True}, "equalHeight": {"type": "boolean"}, "columns": positive_int, "padding": padding,
-        "variant": enum_expr(["primary", "secondary", "outline", "soft", "danger", "glass"]),
+        "variant": enum_expr(["primary", "secondary", "outline", "soft", "danger", "glass", "ghost"]),
         "wrap": {"type": "boolean"}, "smooth": {"type": "boolean"},
         "italic": {"type": "boolean"}, "underline": {"type": "boolean"}, "strikethrough": {"type": "boolean"},
         "aurora": either({"type": "boolean"}, array(text), ref("compileExpression")),
@@ -110,10 +116,25 @@ def language_schema():
             return adaptive
         if name == "size":
             return either(common["size"], numeric)
+        if name == "rotation":
+            return either(number, {"type": "string", "pattern": "^\\$[A-Za-z_][A-Za-z0-9_.-]*$"}, ref("compileExpression"))
         if name in {"weight", "textPaddingX", "letterSpacing", "opacity", "strokeWidth", "backdropBlur", "noise", "innerGlow", "max", "barHeight", "trackHeight"}:
             return numeric
         if name in {"visible", "hidden", "showValue", "darkIsland", "showHomeIndicator"}:
             return {"type": "boolean"}
+        if name in {"checked", "selected", "disabled", "multiple"}:
+            return {"type": "boolean"}
+        if name == "options":
+            return array(nonempty, 1)
+        if name == "selectedIndex":
+            return nonnegative_int
+        if name == "selectedIndices":
+            return {**array(nonnegative_int), "uniqueItems": True}
+        if name in {"group", "selectionGroup"}:
+            return text
+        if name == "styles":
+            style = obj({key: property_shape(key) for key in sorted(STATE_STYLE_KEYS)})
+            return obj({state: style for state in ("hover", "selected", "disabled", "focused")})
         if name == "percent":
             return ref("value")
         if name in {"tabBar", "navBar"}:
@@ -131,11 +152,22 @@ def language_schema():
         return string_expr
 
     def node_variants(kind, props, required=()):
+        props = {**props, "visible": {"type": "boolean"}, "hidden": {"type": "boolean"}}
+        props.update({alias: props[canonical] for alias, canonical in NODE_SOURCE_ALIASES.items() if canonical in props})
         standard = obj({"type": {"const": kind}, **props}, ["type", "id", *required])
         shorthand_props = {k: v for k, v in props.items() if k != "type"}
         shorthand_props[kind] = ident
         shorthand = obj(shorthand_props, [kind, *required])
         return [standard, shorthand]
+
+    by_type = {}
+    by_short = {}
+
+    def add_variants(kind, variants):
+        standard, shorthand = variants
+        by_type.setdefault(kind, []).append(standard)
+        by_short.setdefault(kind, []).append(shorthand)
+        nodes.extend(variants)
 
     nodes = []
     for kind, fields in NODE_PROPS.items():
@@ -146,30 +178,56 @@ def language_schema():
             props["align"] = enum_expr(["start", "center", "end", "stretch"])
         elif "align" in fields:
             props["align"] = enum_expr(["left", "center", "right"])
-        required = ["dataset", "template"] if kind == "repeater" else ["states"] if kind == "dynamic-panel" else ["src"] if kind == "image" else []
-        nodes.extend(node_variants(kind, props, required))
+        required = ["dataset", "template"] if kind == "repeater" else ["states"] if kind == "dynamic-panel" else ["src"] if kind == "image" else ["options"] if kind in OPTION_KINDS else []
+        add_variants(kind, node_variants(kind, props, required))
+    base_props = {shape["properties"]["type"]["const"]: {key: value for key, value in shape["properties"].items() if key != "type"}
+                  for shape in nodes if "type" in shape["properties"]}
+    canonical_box_fields = set(base_props["box"])
+    # These source shapes are consumed by the same normalizer that handles
+    # content sugar before canonical AST validation.
+    box_label_variants = node_variants("box", base_props["label"], ["text"])
+    for shape in box_label_variants:
+        shape["not"] = {"anyOf": [{"required": [key]} for key in ("children",) + BOX_TEXT_CONTAINER_KEYS]}
+    add_variants("box", box_label_variants)
+    text_box_props = {**base_props["box"], "text": base_props["label"]["text"],
+                      **{key: base_props["label"][key] for key in BOX_TEXT_STYLE_KEYS}}
+    text_box_variants = node_variants("box", text_box_props, ["text"])
+    for shape in text_box_variants:
+        shape["not"] = {"required": ["children"]}
+        shape["anyOf"] = [{"required": [key]} for key in BOX_TEXT_CONTAINER_KEYS]
+    add_variants("box", text_box_variants)
+    card_content_props = {**base_props["card"], **{key: property_shape(key) for key in CARD_CONTENT_KEYS + CARD_CONTENT_OPTIONS}}
+    card_content_variants = node_variants("card", card_content_props)
+    for shape in card_content_variants:
+        shape["anyOf"] = [{"required": [key]} for key in CARD_CONTENT_KEYS]
+    add_variants("card", card_content_variants)
+    droplist_props = {**common, **{key: property_shape(key) for key in NODE_PROPS["combobox"]}}
+    droplist_props["align"] = enum_expr(["left", "center", "right"])
+    add_variants("droplist", node_variants("droplist", droplist_props, ["options"]))
     for alias in ("row", "column", "grid", "stack"):
         props = {**common, **{k: property_shape(k) for k in NODE_PROPS["box"]}}
         props.pop("font")
         props["align"] = enum_expr(["start", "center", "end", "stretch"])
-        nodes.extend(node_variants(alias, props))
+        add_variants(alias, node_variants(alias, props))
     panel_alias_props = {**common, **{k: property_shape(k) for k in NODE_PROPS["dynamic-panel"]}}
     panel_alias_props.pop("font", None)
-    nodes.extend(node_variants("panel", panel_alias_props, ["states"]))
+    add_variants("panel", node_variants("panel", panel_alias_props, ["states"]))
     repeat_props = {k: common[k] for k in {"id", "size"} | GEOMETRY}
     repeat_props.update({k: special[k] for k in ("dataset", "as", "key", "template")})
-    nodes.extend(node_variants("repeat", repeat_props, ["dataset", "template"]))
+    add_variants("repeat", node_variants("repeat", repeat_props, ["dataset", "template"]))
     when_props = {k: common[k] for k in {"id", "size"} | GEOMETRY}
     when_props.update({"condition": ref("value"), "then": ref("node"), "else": ref("node"), "layout": special["layout"], "gap": numeric})
-    nodes.extend(node_variants("when", when_props, ["condition", "then"]))
+    add_variants("when", node_variants("when", when_props, ["condition", "then"]))
     # Inline component argument names are declared by the source's components map.
     # JSON Schema cannot validate those cross-object names; check does so strictly.
     use_props = {"id": ident, "component": ident, "args": {"type": "object", "additionalProperties": ref("dataValue")}}
-    for variant in node_variants("use", use_props, ["component"]):
+    use_variants = node_variants("use", use_props, ["component"])
+    for variant in use_variants:
         variant["additionalProperties"] = ref("dataValue")
-        nodes.append(variant)
+    add_variants("use", use_variants)
     inline_use = obj({"use": ident, "id": ident, "args": {"type": "object", "additionalProperties": ref("dataValue")}}, ["use", "id"])
     inline_use["additionalProperties"] = ref("dataValue")
+    by_short.setdefault("use", []).append(inline_use)
     nodes.append(inline_use)
 
     macro_required = {
@@ -213,14 +271,49 @@ def language_schema():
                 props[list_name] = array(item, 1)
         if kind in ("kv-list", "detail-card"):
             props["rowHeight"] = {"type": "number", "minimum": 4}
-        nodes.extend(node_variants(kind, props, macro_required.get(kind, [])))
-    defs["node"] = {"anyOf": nodes}
+        add_variants(kind, node_variants(kind, props, macro_required.get(kind, [])))
+
+    # 用 O(1) if/then 判别器替代扁平 60 分支 anyOf，避免递归容器子树触发 O(K^depth) 指数级回溯。
+    prop_owners = {}
+    for kind, items in by_short.items():
+        for shape in items:
+            for prop_name in shape.get("properties", {}):
+                if prop_name != kind:
+                    prop_owners.setdefault(prop_name, set()).add(kind)
+
+    def node_branch(items):
+        return items[0] if len(items) == 1 else {"anyOf": items}
+
+    node_rules = [
+        {"if": {"required": ["type"], "properties": {"type": {"const": kind}}}, "then": node_branch(items)}
+        for kind, items in sorted(by_type.items())
+    ]
+    for kind, items in sorted(by_short.items()):
+        owners = set(prop_owners.get(kind, ()))
+        if kind != "use":
+            owners.add("use")
+        blockers = [{"required": ["type"]}, *[{"required": [owner]} for owner in sorted(owners)]]
+        guard = blockers[0] if len(blockers) == 1 else {"anyOf": blockers}
+        node_rules.append({"if": {"not": guard, "required": [kind]}, "then": node_branch(items)})
+
+    defs["node"] = {
+        "type": "object",
+        "anyOf": [
+            {"required": ["type"], "properties": {"type": {"enum": sorted(by_type)}}},
+            *[{"not": {"required": ["type"]}, "required": [kind]} for kind in sorted(by_short)],
+        ],
+        "allOf": node_rules,
+    }
 
     actions = []
     for kind, fields in ACTION_PROPS.items():
         props = {"type": {"const": kind}}
         for name in fields:
             props[name] = ref("reference") if name == "target" else ref("value") if name in {"text", "value", "where"} else array({"type": "object", "additionalProperties": ref("value")}, 1) if name == "rows" else {"type": "object", "minProperties": 1, "additionalProperties": ref("value")} if name == "set" else nonnegative_int if name == "ms" else either({"enum": ["next", "previous", "first", "last"]}, positive_int) if name == "page" and kind == "data-page" else text
+        if kind in {"set-check", "set-selected"}:
+            props["checked" if kind == "set-check" else "selected"] = ref("booleanValue")
+        if kind == "set-option":
+            props["value"] = ref("textValue")
         optional = {"direction"} if kind == "data-sort" else {"name"} if kind == "data-filter" else set()
         if kind == "set-size":
             props["width"] = ref("value")
@@ -421,4 +514,29 @@ def language_schema():
         "components": {"type": "object", "additionalProperties": obj({"params": {"type": "object", "propertyNames": ident, "additionalProperties": ident}, "root": ref("node")}, ["root"])},
         "pages": array(page, 1)}, ["language"])
     result["anyOf"] = [{"required": ["pages"]}, {"required": ["product"]}]
-    return {"$schema": "https://json-schema.org/draft/2020-12/schema", "title": "RP/1 prototype language", "description": "RP/1 standard AST, sugar and macro source shapes. Run check for expression types, dynamic component argument names, references, row scope, dataset columns and target support.", **result, "$defs": defs}
+    source_properties = {}
+    for shape in nodes:
+        kind = shape.get("properties", {}).get("type", {}).get("const")
+        if kind:
+            source_properties.setdefault(kind, set()).update(shape["properties"])
+    box_label_fields = source_properties.get("label", set()) - canonical_box_fields
+    for kind, fields in source_properties.items():
+        fields.update({"visible", "hidden"})
+        if kind == "card":
+            fields.update(CARD_CONTENT_KEYS + CARD_CONTENT_OPTIONS)
+        if kind == "box":
+            fields.update(box_label_fields)
+            fields.update(("text",) + BOX_TEXT_STYLE_KEYS)
+        fields.update(alias for alias, canonical in NODE_SOURCE_ALIASES.items() if canonical in fields)
+    conditions = {
+        "box": {
+            **{field: f"仅在 box 声明 text、没有 children 且没有 {'/'.join(BOX_TEXT_CONTAINER_KEYS)} 时消费：正规化为 label，使用 label 的字段语义" for field in box_label_fields},
+            **{field: "仅在 box 声明 text 且没有 children 时消费：正规化为 label 或实际文字子节点" for field in ("text",) + BOX_TEXT_STYLE_KEYS},
+        },
+        "card": {field: "仅在 card 同时声明 title/body/tag/actionText 等内容简写时消费；展开后修改实际子节点" for field in CARD_CONTENT_OPTIONS},
+    }
+    for fields in conditions.values():
+        fields.update({alias: fields[canonical] for alias, canonical in NODE_SOURCE_ALIASES.items() if canonical in fields})
+    return {"$schema": "https://json-schema.org/draft/2020-12/schema", "title": "RP/1 prototype language", "description": "RP/1 standard AST, sugar and macro source shapes. Run check for expression types, dynamic component argument names, references, row scope, dataset columns and target support.", **result, "$defs": defs,
+            "x-source-properties-by-type": {kind: sorted(fields) for kind, fields in sorted(source_properties.items())},
+            "x-source-property-conditions": conditions}

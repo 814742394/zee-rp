@@ -11,10 +11,7 @@
 ModuleNotFoundError: No module named 'PIL'
 ```
 
-**原因**：`proto.py` 第 26 行 `from PIL import Image, ...`。compile/generate/audit/截图重建全部依赖 Pillow
-+ numpy + scipy。MCP 服务用**裸 `python3`** 起子进程（`scripts/*.mjs` 共 18 处 `spawnSync('python3', ...)`），
-**没有独立的解释器环境变量**，只能靠 `PATH` 解析。客户端注入的 MCP `env` 若不含带 PIL 的 Python，必然踩坑。
-`rp_read`/`verify` 这类只读工具不受影响（不走 Python），所以容易误判成"服务坏了"。
+**原因**：编译、审计和截图重建依赖 Pillow、NumPy 和 SciPy。MCP 启动的 Python 环境缺少这些依赖时，生成会在编译阶段退出。
 
 **修复（推荐，一次性）**。下面 `<repo>` 指 zee-rp 检出目录：
 
@@ -26,7 +23,7 @@ python3 -m venv .venv
 
 然后让 MCP 服务用上它。两种做法：
 
-1. **改 MCP 配置**（推荐）：在客户端的 MCP `env:` 段加一行 PATH，venv 置顶：
+1. **改 MCP 配置**（推荐）：在客户端的 MCP `env:` 段用 `ZEE_PYTHON` 指定虚拟环境解释器：
 
    ```json
    {
@@ -35,7 +32,7 @@ python3 -m venv .venv
          "command": "node",
          "args": ["/absolute/path/zee-rp/bin/mcp.mjs"],
          "env": {
-           "PATH": "/absolute/path/zee-rp/.venv/bin:/usr/local/bin:/usr/bin:/bin",
+           "ZEE_PYTHON": "/absolute/path/zee-rp/.venv/bin/python",
            "AXURE_BLANK_TEMPLATE_RP9": "/absolute/path/my-rp9-blank.rp"
          }
        }
@@ -46,18 +43,18 @@ python3 -m venv .venv
    改完重连服务。`runtime_info` 的 `python.imageModules` 应显示 `PIL/numpy/scipy: true`。
    （DeepSeek Harness 的接入脚本 `dsh-setup/install.sh` 已内置这段检测与注入，重跑一次即可；
    其他客户端照上面的 JSON 手工加。）
-2. **CLI 兜底**（不重连服务）：命令前加 PATH 前缀，并补上模板变量，否则会报缺 RP9 空白模板：
+2. **CLI 兜底**（不重连服务）：为本次命令指定解释器和空白模板：
 
    ```bash
    cd <repo>
-   PATH="$PWD/.venv/bin:$PATH" \
+   ZEE_PYTHON="$PWD/.venv/bin/python" \
    AXURE_BLANK_TEMPLATE_RP9=/absolute/path/my-rp9-blank.rp \
    node scripts/proto.mjs generate --spec X.rp1 --out-dir D --out-rp O.rp --strict-audit --backend native
    ```
 
    MCP 侧同一份源码用 `generate_prototype`；CLI 侧用上面这条，产物等价。
 
-**判别**：`python3 -c "import PIL, numpy"` 能过就没这个问题。`runtime_info` 的
+**判别**：用配置的解释器运行 `.venv/bin/python -c "import PIL, numpy, scipy"`。`runtime_info` 的
 `missingImageDependencies` 非空即是此坑。另注：homebrew Python 受 PEP 668 保护，
 `pip install` 会拒绝，必须用 venv（或 `--break-system-packages`）。
 
@@ -67,11 +64,38 @@ python3 -m venv .venv
 `default: ~/Library/Application Support/zee-axure/templates/axure-rp9-blank.rp（不存在）`
 及两个 tmp fallback。
 
-**原因**：`AXURE_BLANK_TEMPLATE_RP9` 未设置（MCP 侧由客户端注入，通常没问题；
-**CLI 手动跑时必须自己给**）。
+**原因**：环境变量和默认位置都未提供可用的 RP9 单页空白模板。
 
 **修复**：`export AXURE_BLANK_TEMPLATE_RP9=/absolute/path/my-rp9-blank.rp`。
-缺模板时用 `create-blank-project --version 9` 从 Axure 保存一份单页空白工程。
+缺模板时在 Axure RP 9 中新建并保存一份单页空白工程。
+
+## Studio 点不到文字、微抖动误拖或画板被面板挡住
+
+设计态下，透明、无边框/背景效果且无子节点的交互box不拦截下层绘制内容；热区仍可从图层列表选取，预览态继续接收点击。真实拖动需要超过4 CSS px，阈值不随画布缩放改变。容器内框选使用Shift拖动，Shift单击仍切换选中状态。
+
+非阻断布局/字体提示默认折叠；展开查看详情，操作错误仍直接显示。适应当前画板或全部画板以左右面板实际净空计算，点击缩放百分比恢复100%，加减按钮使用常用缩放档位。Option按住并悬停另一图层可显示按画布单位计算的边界间距；松键、失焦会清除测距。旋转图元使用轴对齐外接矩形度量，不是斜边间最短距离。
+
+多页近景只装载当前页与视口邻页；缩放低于15%时邻页简化显示，点击画板或放大查看内容。此为画板级装载优化，当前活动页的海量节点仍完整挂载；任意小数缩放的文字锐度仍受浏览器影响，不承诺全比例像素一致。
+
+## Studio 导入 phone-shell 重叠或深色画板露白
+
+新导入的 phone-shell 默认采用 column 流式布局、12px间距、[60,16,20,16]安全留白和$bg填充；显式 layout/padding/gap/fill 优先。需要自由定位时显式写 layout=stack、padding=0。Studio 空白画布已有独立安全区容器，保持原自由布局。
+
+modern-dark 预设与Python原生色板一致，palette覆盖预设，颜色token再覆盖palette。设计态和预览态的画板背景、默认文字与单侧边框消费相同颜色变量；改色必须更新画板变量，不能只刷新文本节点。更新后先重启拥有工程的旧Studio服务并重连MCP，再刷新页面；旧已保存文档不会被自动替换，需从源码重新导入时使用新的工程目录保留现有改稿。
+
+## 多页预览已落盘，但 .rp 长时间未生成
+
+旧构建对每组交互重复解析全项目的面板状态及文档，并重复重建压缩记录，40页任务可耗时20分钟以上。2026-11-03 改为装配内复用解析结果与上下文、最后批量写回。同一78,547字节原始压测源（40页、2040元件）本机新stdio异步生成27.8秒，重放原三项改稿32.8秒；旧23分29秒/20分20秒来自原试用报告，本轮未重跑旧版整套。该结果绑定本机代码与样本，不外推所有项目规模。
+
+异步任务现在返回分阶段 `phase` 和 `progress`。若仍只有旧的generate阶段，先用runtime_info核对运行/磁盘指纹并重连；判断GUI/离线渲染修复时，也要看实际文件：GUI调度在 `jobs.mjs` / `gui-roundtrip.swift`，离线绘制在 `proto_engine/audit.py` 的 `text_ink_geometry`。`compilerHashes`只是部分关键文件，单看 `mcp-tools.mjs` 哈希不能代表这些实现是否更新。
+
+## gui_roundtrip 首次提示 Owned job document is unavailable
+
+表示在等待期内没有观察到本任务的文档窗口，不等于源文件结构有误。助手对这一特定打开失败等待后通过 LaunchServices 再投递一次，最多重试一次，不重新执行已经开始的保存/关闭流程。窗口名支持显示 `.rp` 扩展名的形式；观察到文档后会记录 `AXURE_GUI_DOCUMENT_OPENED`，完整阶段仍以 opened/saved/closed/reopened/preview 分别判断。
+
+若最终失败且尚未观察到原生文档，只删除本任务创建、身份/修改时间/SHA均未变化的输出副本。结果 `outputCleanup.removed:true` 时可用相同输出路径重试。已经打开、改动、替换的输出会保留；运行中取消也保留，排队取消则清理未使用副本。`EEXIST` 会给出路径并继续拒绝覆盖：换新路径，或先核对失败记录与文件内容，再处理确认为失败遗留的文件。
+
+本机已通过故障注入的清理/重试、保留反例与真实 RP9 保存重开发布验证；偶发首开超时未稳定复现，不能据此承诺所有首次调用永不失败。
 
 ## 手机原型布局与 RP/1
 

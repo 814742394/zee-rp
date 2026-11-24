@@ -10,7 +10,7 @@
 
 1. **环境**：`python3 -c "import PIL, numpy"` 不过 → `generate` 必崩。先建 venv：
    `python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`。
-   MCP 侧还需在 DSH 的 `env:` 里注入 `PATH: <repo>/.venv/bin:...`。
+   在 MCP 客户端的 `env:` 用 `ZEE_PYTHON` 指向 `<repo>/.venv/bin/python`。
 2. **`.rp1` 的列表条目**：`kv-list` / `detail-card` **不能**写 `items=[{...}]`（会报
    `Unknown property 'children'`，补丁建议是误导）。一律用缩进 `:item` 行。
    `data-table` 用 `:col`、`form-card` 用 `:field`、`searchable-list` 用 `:template`/`:filters`。

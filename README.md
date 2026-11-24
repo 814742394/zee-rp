@@ -2,47 +2,48 @@
 
 <div align="center">
 
-<img src="assets/readme/hero.svg" alt="zee-rp — Describe. Compile. Keep editing." width="100%">
+<img src="assets/readme/cover.svg" alt="zee-rp · Make room for ideas. AI-native canvas. Editable Axure output." width="100%">
 
-<h1>让 AI 画出原型，<br>在 Axure 里继续改。</h1>
+# 给 AI 一张自由画布。<br>把设计带回 Axure。
 
-从一句需求、一张截图，到带页面、变量和交互的原生 **`.rp`**。<br>
-用 **RP/1** 写设计，用 **MCP / CLI** 生成，打开 **Axure** 接着改。
+**用 RP/1 写下设计，让 AI 起稿、你来精修，交付可继续编辑的 `.rp`。**
 
-[![MIT](https://img.shields.io/badge/license-MIT-142033?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/github/v/release/LilZeeCN/zee-rp?style=flat-square&color=304FFE)](https://github.com/LilZeeCN/zee-rp/releases)
-[![Checks](https://img.shields.io/github/actions/workflow/status/LilZeeCN/zee-rp/test.yml?style=flat-square&label=checks)](https://github.com/LilZeeCN/zee-rp/actions)
+[开始使用](#quickstart)　·　[自由画布](#studio)　·　[RP/1](#rp1)　·　[English](README.en.md)
 
-[看原型](#先看一个完整的-app) · [开始使用](#把它接到你的-agent) · [理解 RP/1](#设计有源码就能接着生长) · [能力与边界](#交付到哪一步就验证到哪一步) · [English](README.en.md)
+[![MIT](https://img.shields.io/badge/MIT-open_source-D5FF70?style=flat-square&labelColor=202825)](LICENSE) [![Checks](https://img.shields.io/github/actions/workflow/status/LilZeeCN/zee-rp/test.yml?branch=main&style=flat-square&label=checks&labelColor=202825&color=637E51)](https://github.com/LilZeeCN/zee-rp/actions)
 
 </div>
 
-## 先看一个完整的 App
+<br>
 
-> 「做一个好看的观鸟手机应用，带 iPhone 17 Pro 外壳，设计你自己定。」
+<img src="assets/readme/showcase.png" alt="栖羽 QIYU：由 zee-rp 生成的探索首页、鸟种详情和观鸟手记，完整案例共九页" width="100%">
 
-**栖羽 / QIYU**：自然绿、暖白与鸟类实拍，串起探索、拍照识鸟演示、鸟种详情、观鸟地点和个人手记。9 页原型，能填地点、写观察、收藏鸟种、切换图鉴，保存后回到手记查看。
+<p align="center"><b>栖羽 / QIYU</b>　从探索、鸟种详情，到留下自己的观鸟手记。</p>
+<p align="center"><sub>9 页原生原型示例 · 文字、按钮与输入保留为独立元件 · 识别与统计使用演示数据 · <a href="assets/readme/README.md">素材与案例说明</a></sub></p>
 
-<table>
-<tr>
-<td width="33%"><img src="assets/readme/qiyu-home.png" alt="栖羽探索首页：今日翠鸟、附近羽邻与识鸟入口" width="100%"></td>
-<td width="33%"><img src="assets/readme/qiyu-species.png" alt="鸟种详情：独立文本、标签、动态面板与记录按钮" width="100%"></td>
-<td width="33%"><img src="assets/readme/qiyu-journal.png" alt="个人观鸟手记：时间轴、变量回显与图鉴切换" width="100%"></td>
-</tr>
-<tr><td align="center">探索今天的羽邻</td><td align="center">认识眼前的鸟</td><td align="center">留下自己的记录</td></tr>
-</table>
+<br>
 
-文字、卡片、按钮、输入和地图示意保留为独立元件；照片是嵌入图片。识别、路线与统计使用演示数据。[图片署名与案例说明](assets/readme/README.md)。
+<a id="studio"></a>
 
-### 再看 40 秒的工作流
+## 01　在画布里，把设计推敲到位。
 
-https://github.com/user-attachments/assets/39c37462-3956-48b8-b495-fe90d2ab9431
+Studio 是一块 AI 和人都能编辑的自由画布。让 Agent 搭好第一版，再直接点选、改字、调整布局；也可以把局部交还 AI，继续探索另一种构图。
 
-以「知序」考研复习 App 展示需求、页面和可编辑原型之间的关系。影片依据原型规格制作，属于流程动画。[下载 1080p / 60fps 视频](https://github.com/LilZeeCN/zee-rp/releases/download/v0.2.1/zee-rp-zhixu-1080p60.mp4) · [制作说明](assets/promo/README.md)。
+<img src="assets/readme/studio.png" alt="真实 Studio 界面：另一版栖羽设计、独立图层、文字选择框与可编辑的位置尺寸属性" width="100%">
 
-## 设计有源码，就能接着生长
+**AI 起稿。** RP/1 或命令创作，按图层、语义和范围查询，局部改稿。<br>
+**人来精修。** 双击改字、Shift 框选、Option / Alt 悬停测距，撤销重做。<br>
+**一起验证。** 查看真实截图、运行交互场景，再交付原型。
 
-zee-rp 的核心是一份叫 **RP/1** 的原型源码。页面、布局、数据与事件写在一起，生成后仍然能回到源码改稿，也能在 Axure 里调整。
+[画室工作流](docs/studio-design-workflow.md)　↗　[AI 创作指南](docs/studio-ai-authoring.md)
+
+<br>
+
+<a id="rp1"></a>
+
+## 02　设计意图，有自己的源码。
+
+**RP/1** 把页面、布局、组件、变量和交互写在一起。AI 改动有明确目标，设计也能保留结构、版本和继续迭代的起点。
 
 ```text
 rp/1 target=9 name="下一次相遇" domain=mobile theme=mobile-hifi
@@ -57,34 +58,33 @@ page #notes name="手记" device=iphone-17-pro
     button #back [fillx44] "返回发现" goto="home"
 ```
 
-把它保存成 `birding.rp1`，通过 MCP 一次生成原生工程：
+从一个页面到完整流程，`revise_prototype` 继续改稿；已有原生修改也能在支持范围内合并回源码。
 
-```json
-{
-  "source": "/absolute/path/birding.rp1",
-  "output": "/absolute/path/birding.rp"
-}
-```
+[RP/1 手册](references/rp-language.md)　↗　[完整示例](examples/authoring/mobile-cards.rp1)　↗　[原生往返](docs/studio-native-roundtrip.md)
 
-生成结果同时包含 `.rp`、源码基线、全页预览、状态拼图与检查报告。`[fillxhug]` 表示宽度铺满、高度按内容测量。[RP/1 手册](references/rp-language.md) · [完整示例](examples/authoring/mobile-cards.rp1) · [MCP 用法](references/mcp-prototype.md)。
+<br>
 
-| 你想做的事 | zee-rp 的做法 |
+## 03　交到 Axure，仍然握得住设计。
+
+生成原生 **`.rp`**，在 Axure 中继续修改支持的文字、控件和布局。页面、变量、动态面板与跳转可以一起交付，源稿、预览和检查报告也一并保留。
+
+| 从哪里继续 | 可以做什么 |
 | :--- | :--- |
-| 从需求搭出多页原型 | 共享主题、组件、变量和跨页跳转，直接生成原生 `.rp` |
-| 从截图开始重建 | OCR、形状与布局检测；文字和支持的几何成为原生元件，照片保留为独立图片 |
-| 给现有工程改字、改名、改样式 | 直接读取 RP9 / RP11，按名称、逻辑 ID 或对象定位修改 |
-| 做第二轮设计 | `revise_prototype` 改源码并重建；`sync_prototype` 在已支持范围内合并原生改稿 |
-| 确认它能用 | 布局审计、引用检查、原生浏览器预览回放、保存重开分别记录 |
+| **Studio** | 和 AI 共用设计文档、事务与撤销历史 |
+| **Axure** | 打开原生工程，继续编辑元件与支持的交互 |
+| **浏览器** | 运行预览；也可导出独立 HTML / CSS / JS |
 
-### 手里有截图，也能开始
+[原生导出与回填](docs/studio-native-roundtrip.md)　↗　[代码导出](docs/studio-code-export.md)　↗　[40 秒流程动画](https://github.com/LilZeeCN/zee-rp/releases/download/v0.2.1/zee-rp-zhixu-1080p60.mp4)
 
-<img src="examples/screenshot/comparison.png" alt="原创几何演示图与重建布局的视觉比较" width="100%">
+<br>
 
-重建会输出可编辑布局和对比图。图片无法透露的业务逻辑需要另行定义。[截图重建流程](references/screenshot-workflow.md)。
+<a id="quickstart"></a>
 
-## 把它接到你的 Agent
+## 开始使用
 
-本机需要 **Node.js 18+、Python 3.10+**；生成原生工程还需要 **Axure** 和自己保存的 **RP9 单页空白工程**。截图 OCR 使用 macOS Vision 与 Swift。
+准备 **Node.js 18+** 和 **Python 3.10+**。原生生成另需本机 Axure，以及你自己在 RP9 中保存的单页空白工程。
+
+### macOS
 
 ```sh
 git clone https://github.com/LilZeeCN/zee-rp.git
@@ -95,7 +95,42 @@ python -m pip install -r requirements.txt
 npm ci
 ```
 
-在 MCP 客户端中添加服务，并把下面三处路径换成自己的绝对路径：
+### Windows 支持
+
+原生 `.rp` 的读取、写入和生成可以在 Windows 上运行（Node 18+ / Python 3.10+）。
+
+用 Node.js 24 和 Python 3.12 可以复用桌面 CI 的环境。在 PowerShell 中安装。
+
+```powershell
+git clone https://github.com/LilZeeCN/zee-rp.git
+cd zee-rp
+py -3.12 -m venv .venv
+$env:ZEE_PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
+& $env:ZEE_PYTHON -m pip install pillow numpy jsonschema
+npm.cmd ci
+```
+
+- 生成器需要你用本机 Axure 保存一个单页、零元件 RP9 工程，并把 `AXURE_BLANK_TEMPLATE_RP9` 指向它。
+- Axure 会在常见安装目录和盘符根目录的便携版中自动探测（`C:\AxureRP9.exe`、`D:\AxureRP9.exe`）；可用 `AXURE_APP_RP9` 覆盖，用 `AXURE_INSTALL_ROOT_RP9`（安装根目录）或 `AXURE_DEFAULT_SETTINGS_RP9`（直接路径）指向 `DefaultSettings`。
+- 多路径环境变量在 Windows 上用 `;` 分隔（`AXURE_PROTECTED_PATHS`、`AXURE_WRITE_ROOT`）。
+- RP/1 默认使用原生后端。用旧规格调用 `build-rp` 或 `generate` 时需传 `--backend native`。GUI 后端、macOS 菜单自动化与 `tools/rp9_place.py` 仅支持 macOS。`axvg paste` 会把负载写入 Windows 剪贴板，在 Axure 中按 Ctrl+V 粘贴。
+- 截图重建需额外安装 SciPy。Windows 支持形状识别，文字需另行提供。OCR 使用 macOS 的 Apple Vision。
+- Windows 和 macOS CI 都覆盖 RP/1 文件解析、编译和输出目录。用本机 Axure 模板验证完整的 MCP 生成，请运行 `npm.cmd run test:mcp-generate`。`test:backend` 还需要兼容的 `Training/RP9 Tour.rp`。生成空白动态面板时，如果内置教学工程没有 `Discount Panel`，会按工程顺序选取第一个无名面板的外壳。如果要从多个无名面板中复制已有状态内容，请通过 `AXURE_PANEL_TEMPLATE` 和 `AXURE_PANEL_TEMPLATE_NAME` 指定一个具名面板。
+
+### 生成第一个 RP9 原型
+
+在 macOS 用 `export AXURE_BLANK_TEMPLATE_RP9=/绝对路径/blank.rp` 指定空白工程。在 Windows PowerShell 用 `$env:AXURE_BLANK_TEMPLATE_RP9 = 'C:\AxureTests\blank.rp'`。换成自己的文件路径，两边执行同一条生成命令。
+
+```sh
+node scripts/proto.mjs generate --spec examples/authoring/mobile-cards.rp1 --out-dir output/mobile-cards --out-rp output/mobile-cards.rp --backend native
+```
+
+用 Axure RP9 打开 `output/mobile-cards.rp` 继续编辑。
+
+<details>
+<summary><b>连接你的 MCP 客户端</b> · 展开配置</summary>
+
+将下面的绝对路径换成自己的安装目录、Python 环境和 RP9 空白工程：
 
 ```json
 {
@@ -104,7 +139,7 @@ npm ci
       "command": "node",
       "args": ["/absolute/path/zee-rp/bin/mcp.mjs"],
       "env": {
-        "PATH": "/absolute/path/zee-rp/.venv/bin:/usr/local/bin:/usr/bin:/bin",
+        "ZEE_PYTHON": "/absolute/path/zee-rp/.venv/bin/python",
         "AXURE_BLANK_TEMPLATE_RP9": "/absolute/path/my-rp9-blank.rp"
       }
     }
@@ -112,51 +147,35 @@ npm ci
 }
 ```
 
-`PATH` 需要包含安装了图片依赖的 Python；如果 Node 不在默认路径，也将 `command` 换成 Node 的绝对路径。Agent 的创作入口是 [SKILL.md](SKILL.md)。
-
-接好之后，可以直接提出一份完整需求：
-
-> 帮我做一个观鸟 App，包含探索、鸟种详情、地点和手记；生成可编辑的 .rp，并检查实际跳转和保存后的回显。
-
-<details>
-<summary><strong>更喜欢终端？CLI 也能完成同一件事</strong></summary>
-
-```sh
-export AXURE_BLANK_TEMPLATE_RP9=/absolute/path/my-rp9-blank.rp
-node scripts/proto.mjs check --spec examples/rp-language/counter.json
-node scripts/proto.mjs generate --spec examples/rp-language/counter.json --out-dir outputs/counter --out-rp outputs/counter/counter.rp
-node bin/axure.mjs rp-read outputs/counter/counter.rp --json
-```
-
-使用新输出文件名，保留原稿。底层命令见[命令表](references/commands-generated.md)。
+上面是 macOS 路径示例。Windows 可用 `C:/work/zee-rp/bin/mcp.mjs`、`C:/work/zee-rp/.venv/Scripts/python.exe` 和 `C:/AxureTests/blank.rp` 填写对应字段。Node 不在默认路径时，`command` 也使用绝对路径。安装更新后重新连接 MCP。
 
 </details>
 
-## 交付到哪一步，就验证到哪一步
+接好后，调用 `studio_open_project`，在浏览器打开返回的 `url`：
 
-一个 `.rp` 能被解析、能在 Axure 打开、能在浏览器点击、能保存后重开，是四件分别需要证据的事。zee-rp 会保留相应检查结果；`strictAudit` 的通过只说明本次编译的布局与样式门禁通过。
-
-当前原生生成目标为 **RP9**；RP9 / RP11 的读写工具按版本处理。近期宿主行为证据来自特定 **macOS + Axure RP9** 样本。[完整能力范围](references/capabilities.md) · [验证记录](docs/verification.md)。
-
-视觉创作还有明确边界：RP/1 暂无 `fontFamily`，离线字体与宿主回退可能不同；图片圆角、阴影和渐变通过嵌入位图呈现。状态高度、导航样式、字体替代流程和静态预览规则见[视觉创作说明](references/visual-authoring.md)。
-
-## 继续往下看
-
-| 入口 | 内容 |
-| :--- | :--- |
-| [SKILL.md](SKILL.md) | Agent 创作、改稿与视觉审阅 |
-| [RP/1 手册](references/rp-language.md) | 布局、交互、数据、面板、母版与适配 |
-| [视觉创作](references/visual-authoring.md) | 居中、字距、导航、状态与字体边界 |
-| [已有全局样式](references/custom-styles.md) | Axure 建定义、脚本改名与批量绑定 |
-| [贡献指南](CONTRIBUTING.md) | 开发、测试与本机运行前提 |
-| [变更记录](CHANGELOG.md) | 已发布版本的变化 |
-
-```sh
-npm test
-npm run test:language
-npm run test:polish
+```json
+{ "projectDir": "/absolute/path/my-first-prototype" }
 ```
 
-源码和原创示例采用 [MIT](LICENSE)。案例中第三方照片的许可与署名单列。项目由 **LilZee** 独立开发，与 Axure 无隶属关系；模板、官方元件库、字体和运行时由使用者本机提供。
+然后把任务交给 Agent：
 
-<div align="center"><sub>想法写进源码，设计留在你的手里。</sub></div>
+> 做一个观鸟 App，包含探索、鸟种详情和手记。先在画布里设计，验证跳转和保存回显，再导出可编辑的 `.rp`。
+
+<details>
+<summary><b>给 Agent 的入口与运行边界</b></summary>
+
+Agent 从 `studio_describe({"topic":"workflow"})` 开始。导入已有 RP/1 可为 `studio_open_project` 指定 `sourcePath`；完整原生生成使用 `generate_prototype`。局部创作和完整编译的支持范围分别记录。
+
+原生生成当前以 RP9 为目标，RP9 / RP11 文件工具按版本处理。宿主证据主要来自 macOS + Axure RP9；部分效果采用嵌入位图，字体和预览可能受宿主影响。任意小数缩放清晰度、单画板海量节点仍有边界。
+
+结构检查、浏览器行为与 Axure 保存重开分别验证。[能力范围](references/capabilities.md) · [验收层级](docs/studio-acceptance.md) · [故障排查](references/troubleshooting.md)
+
+</details>
+
+<br>
+
+---
+
+[Agent Skill](SKILL.md)　/　[贡献指南](CONTRIBUTING.md)　/　[变更记录](CHANGELOG.md)　/　[MIT License](LICENSE)
+
+<sub>由 LilZee 独立开发 · 与 Axure 无隶属关系 · 第三方案例照片按各自许可与署名使用</sub>

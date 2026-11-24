@@ -18,13 +18,15 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { pythonInvocation } from './python.mjs';
 import { createNativeRepeater } from './native-repeater.mjs';
 import { writeNativeScene } from './native-scene.mjs';
+import { materializeNativeControl, applyNativeWidgetStyles } from './native-forms.mjs';
 import { createBlankProject } from './create-blank-project.mjs';
 import { createPanel } from './create-panel-clone.mjs';
 import { fillPanelState } from './fill-panel-state.mjs';
 import { cloneLibraryWidget } from './clone-library-widget.mjs';
-import { addInteractions } from './ix-actions.mjs';
+import { createInteractionWriter } from './ix-actions.mjs';
 import { mergePages } from './merge-pages.mjs';
 import { placeMaster } from './place-master.mjs';
 import { resolvePageRecord } from './ix-actions.mjs';
@@ -239,8 +241,9 @@ function parseFlags(argv) {
 
 function runPy(args, { verbose = false, allowAuditFailure = false } = {}) {
   const t0 = Date.now();
-  logVerbose(verbose, 'compile:start', `python3 proto.py ${args.join(' ')}`);
-  const r = spawnSync('python3', [PROTO_PY, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  const invocation = pythonInvocation([PROTO_PY, ...args]);
+  logVerbose(verbose, 'compile:start', `${invocation.command} proto.py ${args.join(' ')}`);
+  const r = spawnSync(invocation.command, invocation.args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   const elapsed = Date.now() - t0;
   if (r.status !== 0) {
     if (allowAuditFailure) {
@@ -272,6 +275,9 @@ function classifyPlaceError(status, axvgName, stdout, stderr) {
 }
 
 function placeAxvgToCachedRp(axvgPath, cacheDir = DEFAULT_CACHE_DIR, verbose = false) {
+  if (process.platform !== 'darwin') {
+    throw new Error('GUI 后端依赖 macOS 剪贴板与 Axure 菜单自动化；Windows 请使用 --backend native（直接写入原生 .rp）。');
+  }
   const t0 = Date.now();
   mkdirSync(cacheDir, { recursive: true });
   const absAxvg = resolve(axvgPath);
@@ -301,7 +307,8 @@ function placeAxvgToCachedRp(axvgPath, cacheDir = DEFAULT_CACHE_DIR, verbose = f
       const stageRp = join(tmpDir, `${titleTag}.rp`);
       createBlankProject(stageRp, { version: 9 });
       logVerbose(verbose, 'place:gui-run', `${basename(absAxvg)} (tag=${titleTag}, attempt=${attempt})`);
-      const r = spawnSync('python3', [RP9_PLACE_PY, stageRp, titleTag, '--axvg', absAxvg], {
+      const placeInvocation = pythonInvocation([RP9_PLACE_PY, stageRp, titleTag, '--axvg', absAxvg]);
+      const r = spawnSync(placeInvocation.command, placeInvocation.args, {
         encoding: 'utf8',
         timeout: 90000,
       });
@@ -375,6 +382,11 @@ function createBlankPageBuffer(context) {
   }
 }
 
+export function reportPrototypeProgress(phase, completed, total) {
+  // Only asynchronous workers have this IPC channel; CLI stdout stays JSON.
+  if (typeof process.send === 'function') process.send({ type: 'zee-rp-progress', phase, completed, total });
+}
+
 export function buildInteractiveRp(
   planPath,
   outputRpPath,
@@ -426,6 +438,12 @@ export function buildInteractiveRp(
         const output = join(tmpWork, `step-${step++}.rp`);
         const initialized = join(tmpWork, `step-${step++}.rp`);
         writeFileSync(input, buf);
+        if (inp.kind) {
+          const report = materializeNativeControl(input, output, { ...inp, pageName: 'Page 1', width: inp.w, height: inp.h });
+          buf = readFileSync(output);
+          inputReports.push({ page: pageLabel, name: inp.name, kind: inp.kind, id: report.id, geometry: report.geometry });
+          continue;
+        }
         const report = cloneLibraryWidget(rplibPath, input, output, {
           sourcePageName: adapter.inputLibraryPage, targetPageName: 'Page 1', name: inp.name,
           x: inp.x, y: inp.y, width: inp.w, height: inp.h,
@@ -456,10 +474,12 @@ export function buildInteractiveRp(
       const row = assemble(repeater.item,`${label}/${repeater.name}/item`,repeater.name);
       buffer = createNativeRepeater(buffer,row,repeater);
     }
-    return materializeInputs(buffer,stage.nativeInputs ?? [],label);
+    buffer = materializeInputs(buffer,stage.nativeInputs ?? [],label);
+    return applyNativeWidgetStyles(buffer, stage.nativeStyles ?? []);
   };
 
   for (let pIdx = 0; pIdx < pagesList.length; pIdx++) {
+    reportPrototypeProgress('assemble-pages', pIdx, pagesList.length);
     const pPlan = pagesList[pIdx];
     const targetPageName = pPlan.pageName || `Page ${pIdx + 1}`;
     const pageSlug = pPlan.slug || `p${pIdx + 1}`;
@@ -472,16 +492,19 @@ export function buildInteractiveRp(
     }
 
     builtPageInputs.push({ buf: pageBuf, name: targetPageName });
+    reportPrototypeProgress('assemble-pages', pIdx + 1, pagesList.length);
   }
 
   // Step 2: 合并全部单页为多页 .rp (或重命名单页)
   const mergeT0 = Date.now();
+  reportPrototypeProgress('merge-pages', 0, 1);
   let currentBuf = mergePages(builtPageInputs);
+  reportPrototypeProgress('merge-pages', 1, 1);
   logVerbose(verbose, 'merge-pages', `pages=${builtPageInputs.length}`, Date.now() - mergeT0);
 
   if ((plan.masters ?? []).length) {
     for (const mPlan of plan.masters) {
-      const mBuf = materializeInputs(stageBuffer(buildStage(mPlan.axvgPath)), mPlan.nativeInputs ?? [], mPlan.name);
+      const mBuf = applyNativeWidgetStyles(materializeInputs(stageBuffer(buildStage(mPlan.axvgPath)), mPlan.nativeInputs ?? [], mPlan.name), mPlan.nativeStyles ?? []);
       const mRec = readRecords(mBuf).find(r => r.className === 'Axure:Page');
       const mGraph = parsePayload(mRec), mGuids = mGraph.roots.find(n => n.tag === 0x1e).values, mStrings = [...mRec.strings];
       mStrings[0] = 'Axure:Master';
@@ -640,6 +663,9 @@ export function buildInteractiveRp(
 
   // Every accepted event must be materialized, including panel-state owners.
   const ixT0 = Date.now();
+  const interactionWriter = createInteractionWriter(currentBuf);
+  let boundInteractions = 0;
+  reportPrototypeProgress('bind-interactions', 0, deferredInteractions.length);
   for (const { pageName, masterName, ix } of deferredInteractions) {
     const isPageTrig = ix.trigger === 'page' || (typeof ix.trigger === 'object' && ix.trigger?.page && !ix.trigger?.widget);
     const owner = masterName ? { master: masterName } : { page: pageName };
@@ -647,7 +673,7 @@ export function buildInteractiveRp(
       : { ...(typeof ix.trigger === 'object' ? ix.trigger : { widget: ix.trigger }), ...owner };
     let res;
     try {
-      res = addInteractions(currentBuf, trig, normalizeEvents(ix.events), { replaceEvent: true, version: context.targetVersion });
+      res = interactionWriter.add(trig, normalizeEvents(ix.events), { replaceEvent: true, version: context.targetVersion });
     } catch (cause) {
       if (!ix.sourcePointer) throw cause;
       const error = new Error(cause.message);
@@ -655,15 +681,18 @@ export function buildInteractiveRp(
         sourceId: ix.sourceId, message: cause.message }];
       throw error;
     }
-    currentBuf = res.file;
     interactionReports.push({ page: pageName, trigger: res.report.target,
       sourceId: ix.sourceId, sourcePointer: ix.sourcePointer, record: res.report.record,
       addedObjects: res.report.addedObjects, events: res.report.interactions.map(e => e.event) });
+    if (++boundInteractions % 25 === 0) reportPrototypeProgress('bind-interactions', boundInteractions, deferredInteractions.length);
   }
+  currentBuf = interactionWriter.finish();
+  reportPrototypeProgress('bind-interactions', boundInteractions, deferredInteractions.length);
   logVerbose(verbose, 'interactions:all', `bound=${deferredInteractions.length}`, Date.now() - ixT0);
 
   // Step 4: 落盘并执行 rp-read 三零与结构验证
   const auditT0 = Date.now();
+  reportPrototypeProgress('validate-native', 0, 1);
   mkdirSync(dirname(absOut), { recursive: true });
   const assembledSummary = readRp(currentBuf, { path: absOut, includeMasterWidgets: true });
   const allPageWidgets = assembledSummary.pages.flatMap(p => (p.widgets ?? []).map(w => ({ ...w, record: p.record })));
@@ -742,6 +771,7 @@ export function buildInteractiveRp(
   const totalElapsedMs = Date.now() - buildT0;
   logVerbose(verbose, 'audit:rp-read', `pages=${finalSummary.counts.pages} widgets=${finalSummary.counts.widgets} interactions=${finalSummary.counts.interactions} problems=0`, Date.now() - auditT0);
   logVerbose(verbose, 'build-rp:done', `${absOut}`, totalElapsedMs);
+  reportPrototypeProgress('validate-native', 1, 1);
 
   return {
     ok: true,
@@ -749,6 +779,7 @@ export function buildInteractiveRp(
     baselinePath: skipBaseline ? null : baselinePath,
     rpSha256,
     backend,
+    interactionAssembly: interactionWriter.stats(),
     version: finalSummary.version,
     formatVersion: 2, targetVersion: context.targetVersion, delivery: 'file',
     static: staticMode,
@@ -759,7 +790,8 @@ export function buildInteractiveRp(
       layers: layerCount,
       dynamicPanels: dynamicPanelCount,
       repeaters: nativeWidgets.filter(w => w.type === 'Repeater').length,
-      nativeTextBoxes: inputReports.length,
+      nativeTextBoxes: inputReports.filter(inp => !inp.kind || inp.kind === 'input').length,
+      nativeFormControls: inputReports.filter(inp => inp.kind && inp.kind !== 'input').length,
       duplicates: (finalSummary.duplicates ?? []).length,
     },
     threeZeros: {
@@ -810,7 +842,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (['check', 'diagnose', 'binding', 'auto-heal', 'format', 'schema', 'inspect', 'explain', 'complete', 'explore', 'simulate', 'patch', 'dsl-to-json', 'json-to-dsl', 'dsl-format', 'decompile', 'lift-rp'].includes(process.argv[2])) {
       // Preserve the actual tokens: the language parser rejects unknown or misplaced
       // options instead of silently dropping them in the general prototype parser.
-      const result = spawnSync('python3', [LANGUAGE_PY, ...process.argv.slice(2)], {encoding:'utf8', maxBuffer:32*1024*1024});
+      const languageInvocation = pythonInvocation([LANGUAGE_PY, ...process.argv.slice(2)]);
+      const result = spawnSync(languageInvocation.command, languageInvocation.args, {encoding:'utf8', maxBuffer:32*1024*1024});
       if (result.error) throw Object.assign(new Error(result.error.message), { diagnostics: [{code:'E_TOOL_EXEC', pointer:'/arguments', severity:'error', message:result.error.message}] });
       if (result.stdout) process.stdout.write(result.stdout);
       if (result.stderr) process.stderr.write(result.stderr);
@@ -873,7 +906,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (flags.preset) pyArgs.push('--preset', String(flags.preset));
       console.log(JSON.stringify(runPy(pyArgs, { verbose }), null, 2));
     } else if (cmd === 'merge' || cmd === 'measure' || cmd === 'tokens' || cmd === 'doctor') {
-      const result = spawnSync('python3', [PROTO_PY, ...process.argv.slice(2)], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+      const mergeInvocation = pythonInvocation([PROTO_PY, ...process.argv.slice(2)]);
+      const result = spawnSync(mergeInvocation.command, mergeInvocation.args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
       if (result.stdout) process.stdout.write(result.stdout);
       if (result.stderr) process.stderr.write(result.stderr);
       process.exitCode = result.status ?? 1;

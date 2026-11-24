@@ -7,14 +7,19 @@ import { fileURLToPath } from 'node:url';
 import { buildInteractiveRp } from '../scripts/proto.mjs';
 import { readRecords } from '../scripts/rp-records.mjs';
 import { parsePayload, field } from '../scripts/parse-payload.mjs';
+import { pythonInvocation } from '../scripts/python.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const work = mkdtempSync(join(tmpdir(), 'rp-visual-check-'));
+const spawnPy = (args, options) => {
+  const invocation = pythonInvocation(args);
+  return spawnSync(invocation.command, invocation.args, options);
+};
 let checks = 0;
 const check = (label, fn) => { fn(); checks++; console.log('PASS', label); };
 try {
   const compiler = process.argv[2] ?? join(root, 'scripts/proto.py');
-  const run = spawnSync('python3', [compiler, 'compile', '--spec', join(root, 'test/fixtures/rp-native-visual.json'), '--out-dir', work], {
+  const run = spawnPy([compiler, 'compile', '--spec', join(root, 'test/fixtures/rp-native-visual.json'), '--out-dir', work], {
     encoding: 'utf8', env: { ...process.env, PYTHONPATH: join(root, 'scripts') },
   });
   assert.equal(run.status, 0, run.stderr);
@@ -22,7 +27,7 @@ try {
   const page = plan.pages[0];
   check('native input keeps independent placeholder and requested text style', () => {
     assert.equal(page.nativeInputs[0].placeholder, '独立提示');
-    assert.deepEqual(page.nativeInputs[0].style, { fontSize: 16, fontWeight: 700, color: '#173A63', align: 'left', textPaddingX: 12 });
+    assert.deepEqual(page.nativeInputs[0].style, { fontSize: 16, fontWeight: 700, color: '#173A63', align: 'left', textPaddingX: 12, rotation: 0 });
   });
   check('repeater and panel scenes have no rectangular canvas under rounded content', () => {
     for (const scene of [page.repeaters[0].item.axvgPath, page.dynamicPanels[0].states[0].axvgPath])

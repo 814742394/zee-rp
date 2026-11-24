@@ -2,13 +2,15 @@ import { generationCapabilities } from './capabilities.mjs';
 import { validateBaseline } from './target-context.mjs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { constants, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertNotProtected, assertWritable } from './engine.mjs';
+import { assertNotProtected, assertWritable, defaultWriteRoot } from './engine.mjs';
+import { pythonInvocation } from './python.mjs';
 import { appExists, templateCandidates } from './version.mjs';
 import { previewPrototype } from './preview-runtime.mjs';
 import { reviewImageStructure } from './image-structure.mjs';
+import { listImplementationFiles } from '../studio/source-fingerprint.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RECIPE_DIR = join(ROOT, 'examples/authoring');
@@ -17,9 +19,16 @@ const fileHash = path => { assertNotProtected(path); return digest(readFileSync(
 const startedAt = new Date().toISOString();
 export const packageVersion = JSON.parse(readFileSync(join(ROOT, 'package.json'))).version;
 function implementation() {
-  const files = ['package.json', ...['scripts', 'scripts/backends', 'bin', 'examples/authoring'].filter(dir => existsSync(join(ROOT, dir)))
-    .flatMap(dir => readdirSync(join(ROOT, dir)).filter(f => /\.(mjs|py|rp1)$/.test(f)).sort().map(f => `${dir}/${f}`))];
-  return Object.fromEntries(files.map(file => [file, fileHash(join(ROOT, file))]));
+  const sourceDirs = ['scripts', 'bin', 'studio', 'examples/authoring'];
+  const files = ['package.json', 'references/rp-language.schema.json', ...sourceDirs.flatMap(listImplementationFiles)];
+  const packsRoot = join(ROOT, 'examples/studio/reference-packs');
+  if (existsSync(packsRoot)) for (const name of readdirSync(packsRoot)) {
+    for (const file of ['manifest.json','source.json']) {
+      const relative = `examples/studio/reference-packs/${name}/${file}`;
+      if (existsSync(join(ROOT, relative))) files.push(relative);
+    }
+  }
+  return Object.fromEntries(files.sort().map(file => [file, fileHash(join(ROOT, file))]));
 }
 const loadedFiles = implementation();
 const loadedFingerprint = digest(JSON.stringify(loadedFiles));
@@ -65,14 +74,15 @@ export const AUTHORING_CHEATSHEET = {
   ],
 };
 
-const tokenQuery = spawnSync('python3', ['-B', '-c', `import json,sys
+const tokenInvocation = pythonInvocation(['-B', '-c', `import json,sys
 sys.path.insert(0, sys.argv[1])
 from rp_language import COLOR_TOKENS, COLOR_TOKEN_ALIASES, DEVICE_CANVAS_PRESETS, THEMES
 from rp_language import FONT_SIZE_TOKENS, FONT_WEIGHT_TOKENS, SPACING_TOKENS, RADIUS_TOKENS
 print(json.dumps(dict(fontSize=FONT_SIZE_TOKENS, fontWeight=FONT_WEIGHT_TOKENS,
  spacing=SPACING_TOKENS, radius=RADIUS_TOKENS,
  colorTokens=sorted({'$'+c for c in COLOR_TOKENS} | set(COLOR_TOKEN_ALIASES)),
- themes=sorted(THEMES), devices={k:[v['w'],v['h']] for k,v in DEVICE_CANVAS_PRESETS.items()})))`, join(ROOT, 'scripts')], { encoding: 'utf8' });
+ themes=sorted(THEMES), devices={k:[v['w'],v['h']] for k,v in DEVICE_CANVAS_PRESETS.items()})))`, join(ROOT, 'scripts')]);
+const tokenQuery = spawnSync(tokenInvocation.command, tokenInvocation.args, { encoding: 'utf8' });
 if (tokenQuery.status !== 0) throw new Error(tokenQuery.stderr || 'Unable to read compiler token catalog');
 export const AUTHORING_TOKENS = JSON.parse(tokenQuery.stdout);
 
@@ -98,7 +108,8 @@ export function recipeCatalog({ recipe, includeSource = false } = {}) {
 export function runWorkflow(command, source, extra = {}) {
   if (typeof source === 'string' && source.trimStart().startsWith('{')) source = JSON.parse(source);
   if (typeof source === 'string') { source = resolve(source); assertNotProtected(source); }
-  const proc = spawnSync('python3', ['-B', join(ROOT, 'scripts/rp_workflow.py')], {
+  const workflowInvocation = pythonInvocation(['-B', join(ROOT, 'scripts/rp_workflow.py')]);
+  const proc = spawnSync(workflowInvocation.command, workflowInvocation.args, {
     input: JSON.stringify({ command, source, ...extra }), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
   });
   if (proc.status !== 0) throw new Error(proc.stderr || 'RP/1 workflow process failed');
@@ -111,28 +122,63 @@ export function runtimeInfo(toolList) {
     .filter(path => loadedFiles[path] !== disk[path]);
   const compilerKeys = ['scripts/rp_language.py', 'scripts/rp_dsl.py', 'scripts/proto.py', 'scripts/rp_workflow.py', 'scripts/mcp-tools.mjs', 'scripts/authoring-workflow.mjs'];
   const compilerHashes = Object.fromEntries(compilerKeys.filter(k => disk[k] || loadedFiles[k]).map(k => [k, { loaded: loadedFiles[k] ?? null, disk: disk[k] ?? null }]));
+  const targets = [9, 11].map(targetVersion => ({
+    targetVersion,
+    axureInstalled: appExists(targetVersion),
+    blankTemplate: templateCandidates(targetVersion).find(candidate => existsSync(candidate.path))?.path ?? null,
+  }));
+  const [defaultTarget] = targets;
   return { status: 'completed', name: 'zee-rp', version: packageVersion, root: ROOT, pid: process.pid, startedAt,
     fingerprint: loadedFingerprint, diskFingerprint: digest(JSON.stringify(disk)),
     trackedFileCount: Object.keys(disk).length, compilerHashes,
     restartRequired: changedFiles.length > 0, changedFiles,
     toolCount: toolList.length, toolSchemaHash: digest(JSON.stringify(toolList)),
     python: pythonEnvironment(),
-    host: { platform: process.platform, node: process.version, nativeTargets: [9, 11], capabilities: generationCapabilities,
-      targets: [9, 11].map(targetVersion => ({ targetVersion, axureInstalled: appExists(targetVersion), blankTemplate: templateCandidates(targetVersion).find(c => existsSync(c.path))?.path ?? null })) },
+    host: { platform: process.platform, node: process.version, nativeTarget: defaultTarget.targetVersion,
+      axureInstalled: defaultTarget.axureInstalled, blankTemplate: defaultTarget.blankTemplate,
+      nativeTargets: targets.map(target => target.targetVersion), capabilities: generationCapabilities, targets },
     nextAction: changedFiles.length ? '磁盘实现已变化，请重新连接 MCP 以加载一致版本；Python 子进程每次读取磁盘实现。'
-      : '当前服务与磁盘指纹一致（含 scripts/*.mjs 与 scripts/*.py 编译器）。若客户端缺少工具，重新连接以刷新工具清单。' };
+      : '当前服务与磁盘指纹一致（含编译器与 Studio 服务/前端）。若客户端缺少工具，重新连接以刷新工具清单。' };
 }
 
 export function pythonEnvironment() {
-  const proc = spawnSync('python3', ['-B', '-c', `import json,sys,importlib
+  const envInvocation = pythonInvocation(['-B', '-c', `import json,sys,importlib
 modules={}
 for name in ('PIL','numpy','scipy'):
  try:
   importlib.import_module(name); modules[name]=True
  except ImportError: modules[name]=False
-print(json.dumps({'executable':sys.executable,'version':sys.version.split()[0],'imageModules':modules,'missingImageDependencies':[k for k,v in modules.items() if not v]}))`],
-  { encoding: 'utf8', timeout: 10000 });
+print(json.dumps({'executable':sys.executable,'version':sys.version.split()[0],'imageModules':modules,'missingImageDependencies':[k for k,v in modules.items() if not v]}))`]);
+  const proc = spawnSync(envInvocation.command, envInvocation.args, { encoding: 'utf8', timeout: 10000 });
   return proc.status === 0 ? JSON.parse(proc.stdout) : { error: proc.error?.message ?? proc.stderr.trim(), missingImageDependencies: ['python3-runtime'] };
+}
+
+const pathOccupied = path => Boolean(lstatSync(path, { throwIfNoEntry: false }));
+function failIfOutputExists(error, path) {
+  if (error?.code === 'EEXIST')
+    throw Object.assign(new Error(`改稿输出已存在，请使用新文件名：${path}`), { code: 'E_OUTPUT_EXISTS' });
+  throw error;
+}
+function copyTreeExclusive(fromDir, toDir, onRootCreated) {
+  try {
+    mkdirSync(toDir);
+  } catch (error) {
+    failIfOutputExists(error, toDir);
+  }
+  onRootCreated?.();
+  const copyChildren = (src, dst) => {
+    for (const entry of readdirSync(src, { withFileTypes: true })) {
+      const srcPath = join(src, entry.name);
+      const dstPath = join(dst, entry.name);
+      if (entry.isDirectory()) {
+        mkdirSync(dstPath);
+        copyChildren(srcPath, dstPath);
+      } else {
+        copyFileSync(srcPath, dstPath, constants.COPYFILE_EXCL);
+      }
+    }
+  };
+  copyChildren(fromDir, toDir);
 }
 
 export function revisePrototype(input, { generate, sync }) {
@@ -145,14 +191,14 @@ export function revisePrototype(input, { generate, sync }) {
   const originalHashes = new Map([sourcePath, rpPath, `${rpPath}.baseline.json`].map(path => [path, fileHash(path)]));
   if (expectedRpSha256 && originalHashes.get(rpPath) !== expectedRpSha256)
     throw Object.assign(new Error('原型已变化，请读取最新状态后重试。'), { code: 'E_STALE_SYNC_STATE' });
-  const writeRoot = (process.env.AXURE_WRITE_ROOT || '').split(':').filter(Boolean)[0] || process.cwd();
+  const writeRoot = defaultWriteRoot();
   let output = input.output && input.output !== 'auto' ? resolve(writeRoot, input.output) : null;
   if (!dryRun && !output) {
     const stem = rpPath.replace(/\.rp$/i, '').replace(/-v\d+$/, '');
     for (let v = 2; ; v++) {
       const candRp = `${stem}-v${v}.rp`;
       const candSrc = `${stem}-v${v}${extname(sourcePath)}`;
-      if (!existsSync(candRp) && !existsSync(candSrc) && !existsSync(`${candRp}.baseline.json`)) {
+      if (!pathOccupied(candRp) && !pathOccupied(candSrc) && !pathOccupied(`${candRp}.baseline.json`) && !pathOccupied(`${candRp}.assets`)) {
         output = candRp;
         break;
       }
@@ -165,7 +211,7 @@ export function revisePrototype(input, { generate, sync }) {
   const destinations = [output, outSource, output && `${output}.baseline.json`, assets].filter(Boolean);
   for (const path of destinations) {
     assertWritable(path);
-    if (existsSync(path)) throw Object.assign(new Error(`改稿输出已存在，请使用新文件名：${path}`), { code: 'E_OUTPUT_EXISTS' });
+    if (pathOccupied(path)) throw Object.assign(new Error(`改稿输出已存在，请使用新文件名：${path}`), { code: 'E_OUTPUT_EXISTS' });
   }
   const parent = dirname(output ?? rpPath);
   assertWritable(join(parent, '.revision'));
@@ -187,13 +233,11 @@ export function revisePrototype(input, { generate, sync }) {
     const summary = { status: dryRun ? 'planned' : 'completed', impact: patched.diff, sync: merged.summary,
       operations: patched.operations, restoredTokenReferences: restored.restoredTokenReferences, originalFilesPreserved: true };
     if (dryRun) return { ...summary, verification: { semantic: true, nativePreview: false } };
-    const built = generate({ targetVersion: context.targetVersion, source: mergedSource, output: join(stage, 'result.rp'), compact: false });
+    const built = generate({ targetVersion: context.targetVersion, template: input.template, source: mergedSource, output: join(stage, 'result.rp'), compact: false });
     if (built.status !== 'completed') return built;
     for (const [path, hash] of originalHashes) if (fileHash(path) !== hash)
       throw Object.assign(new Error(`改稿过程中输入已被修改：${path}`), { code: 'E_CONCURRENT_MODIFICATION' });
-    mkdirSync(assets);
-    published.push(assets);
-    cpSync(built.artifacts.directory, assets, { recursive: true, errorOnExist: true, force: false });
+    copyTreeExclusive(built.artifacts.directory, assets, () => published.push(assets));
     const rebase = value => {
       if (typeof value === 'string') return value.replaceAll(built.artifacts.directory, assets)
         .replaceAll(mergedSource, outSource).replaceAll(built.output, output).replaceAll(stage, assets);
@@ -212,12 +256,15 @@ export function revisePrototype(input, { generate, sync }) {
     const durable = rebase(built);
     for (const [from, to] of [[mergedSource, outSource], [built.output, output]]) {
       mkdirSync(dirname(to), { recursive: true });
-      copyFileSync(from, to, constants.COPYFILE_EXCL); published.push(to);
+      try { copyFileSync(from, to, constants.COPYFILE_EXCL); }
+      catch (error) { failIfOutputExists(error, to); }
+      published.push(to);
     }
     const baseline = rebase(JSON.parse(readFileSync(built.baseline, 'utf8')));
     baseline.outputRp = output; baseline.sourcePath = outSource;
     baseline.rpSha256 = fileHash(output); baseline.sourceSha256 = fileHash(outSource);
-    writeFileSync(`${output}.baseline.json`, JSON.stringify(baseline, null, 2) + '\n', { flag: 'wx' });
+    try { writeFileSync(`${output}.baseline.json`, JSON.stringify(baseline, null, 2) + '\n', { flag: 'wx' }); }
+    catch (error) { failIfOutputExists(error, `${output}.baseline.json`); }
     published.push(`${output}.baseline.json`);
     const report = { ...summary, output, source: outSource, baseline: `${output}.baseline.json`,
       sha256: fileHash(output), previews: durable.previews, artifacts: durable.artifacts,

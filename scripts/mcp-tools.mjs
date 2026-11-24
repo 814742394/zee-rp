@@ -1,5 +1,7 @@
 import { versionSpec } from './version.mjs';
 import { targetContext, validateBaseline } from './target-context.mjs';
+import { validateInput } from '../studio/schema-validation.mjs';
+export { validateInput } from '../studio/schema-validation.mjs';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -7,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listCommands } from './registry.mjs';
-import { assertNotProtected, assertWritable, AxureSession } from './engine.mjs';
+import { assertNotProtected, assertWritable, defaultWriteRoot, AxureSession } from './engine.mjs';
+import { spawnPythonSync } from './python.mjs';
 import { readRp } from './rp-read.mjs';
 import { readRecords, encodeRecord, replaceRecord } from './rp-records.mjs';
 import { parsePayload, encodePayload, field, walkNodes } from './parse-payload.mjs';
@@ -15,13 +18,14 @@ import { setRecordWidgetText } from './set-widget-text.mjs';
 import { setWidgetRichText } from './set-widget-richtext.mjs';
 import { setWidgetNames } from './name-widget.mjs';
 import { EVENTS } from './ix-actions.mjs';
-import { compilePrototype, buildInteractiveRp } from './proto.mjs';
+import { compilePrototype, buildInteractiveRp, reportPrototypeProgress } from './proto.mjs';
 import { expandSpec, pasteAxvg } from './axvg.mjs';
 import { createBlankProject } from './create-blank-project.mjs';
 import { writeNativeScene } from './native-scene.mjs';
 import { mergePages } from './merge-pages.mjs';
 import { authoringTools, recipeSource, runWorkflow, pythonEnvironment } from './authoring-workflow.mjs';
 import { reviewImageStructure } from './image-structure.mjs';
+import { studioTools } from '../studio/mcp-adapter.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const TRACE_PY = join(SCRIPTS_DIR, 'trace.py');
@@ -36,36 +40,6 @@ if (!config) throw new Error('mcp-tools.mjs 未在注册表登记');
 export const toolName = command => command.replaceAll(/[ -]/g, '_');
 
 // 低层 SDK 不自动执行 JSON Schema 校验；本表只使用这些 JSON Schema 关键字。
-export function validateInput(schema, value, at = 'arguments') {
-  if (schema.oneOf) {
-    const matches = schema.oneOf.filter(branch => { try { validateInput(branch, value, at); return true; } catch { return false; } });
-    if (matches.length !== 1) throw new Error(at === 'arguments' ? `${at} 必须选择具名参数或 args，不能混用` : `${at} 格式或类型不匹配`);
-    return;
-  }
-  if (!schema.type) return; // Unrestricted JSON values in source patch operations.
-  if (schema.type === 'object') {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${at} 必须是对象`);
-    for (const key of schema.required ?? []) if (!Object.hasOwn(value, key)) throw new Error(`${at}.${key} 缺失`);
-    for (const [key, field] of Object.entries(value)) {
-      const sub = schema.properties?.[key];
-      if (!sub && schema.additionalProperties === false) throw new Error(`${at}.${key} 未登记`);
-      if (sub) validateInput(sub, field, `${at}.${key}`);
-    }
-  } else if (schema.type === 'array') {
-    if (!Array.isArray(value)) throw new Error(`${at} 必须是数组`);
-    if (schema.minItems !== undefined && value.length < schema.minItems) throw new Error(`${at} 至少需要 ${schema.minItems} 项`);
-    if (schema.maxItems !== undefined && value.length > schema.maxItems) throw new Error(`${at} 最多允许 ${schema.maxItems} 项`);
-    value.forEach((item, i) => validateInput(schema.items, item, `${at}[${i}]`));
-  } else {
-    if (schema.type === 'integer' ? !Number.isInteger(value) : typeof value !== schema.type) throw new Error(`${at} 必须是 ${schema.type}`);
-    if (schema.minimum !== undefined && value < schema.minimum) throw new Error(`${at} 不能小于 ${schema.minimum}`);
-    if (schema.maximum !== undefined && value > schema.maximum) throw new Error(`${at} 不能大于 ${schema.maximum}`);
-    if (schema.minLength !== undefined && value.length < schema.minLength) throw new Error(`${at} 不能为空`);
-    if (schema.pattern && !new RegExp(schema.pattern).test(value)) throw new Error(`${at} 格式错误`);
-    if (schema.enum && !schema.enum.includes(value)) throw new Error(`${at} 不在允许值内`);
-  }
-}
-
 // RP 工具的宿主输入与输出位置；多源导入的第一个参数仍由调用方提供。
 function commandIO(command) {
   if (command.command === 'rp-read') return { source: 'file', readOnly: true };
@@ -99,7 +73,13 @@ function commandSchema(commandName) {
   return config.rawArgs ? { type: 'object', oneOf: [named, raw] } : named;
 }
 
-const toolResult = (value, isError = false) => ({ isError, structuredContent: value, content: [{ type: 'text', text: JSON.stringify(value) }] });
+const toolResult = (value, isError = false) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return { isError, structuredContent: value, content: [{ type: 'text', text: JSON.stringify(value) }] };
+  const { mcpImages, ...payload } = value;
+  const images = Array.isArray(mcpImages) ? mcpImages.filter(i => i.mimeType === 'image/png' && typeof i.data === 'string').slice(0, 4) : [];
+  return { isError, structuredContent: payload, content: [{ type: 'text', text: JSON.stringify(payload) },
+    ...images.map(i => ({ type: 'image', mimeType: i.mimeType, data: i.data }))] };
+};
 const countsOf = rp => ({ pages: rp.counts.pages, widgets: rp.counts.widgets, interactions: rp.counts.interactions, actions: rp.counts.actions, containedWidgets: rp.containedWidgets.length, masters: rp.counts.masters });
 
 function commandArgs(command, input) {
@@ -1113,11 +1093,11 @@ function loadSpecObjectFromSource(sourcePath) {
   if (absPath.toLowerCase().endsWith('.json')) {
     return JSON.parse(readFileSync(absPath, 'utf8'));
   }
-  const proc = spawnSync('python3', [RP_LANG_CLI, 'dsl-to-json', '--spec', absPath], { encoding: 'utf8' });
+  const proc = spawnPythonSync([RP_LANG_CLI, 'dsl-to-json', '--spec', absPath], { encoding: 'utf8' });
   if (proc.status !== 0) {
     let diagPayload = null;
     try { diagPayload = JSON.parse((proc.stderr || proc.stdout || '').trim()); } catch {}
-    const firstMsg = diagPayload?.diagnostics?.[0]?.message || (proc.stderr || proc.stdout || '').trim();
+    const firstMsg = diagPayload?.diagnostics?.[0]?.message || (proc.stderr || proc.stdout || proc.error?.message || '').trim();
     const err = new Error(`解析 RP/1 源码失败：${firstMsg}`);
     if (Array.isArray(diagPayload?.diagnostics)) err.diagnostics = diagPayload.diagnostics;
     throw err;
@@ -1153,7 +1133,7 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
     if (typeof requestedOutput !== 'string' || !requestedOutput.trim()) {
       throw new Error('output 必须是有效的 .rp 路径。');
     }
-    const defaultRoot = (process.env.AXURE_WRITE_ROOT || '').split(':').filter(Boolean)[0] || process.cwd();
+    const defaultRoot = defaultWriteRoot();
     let effectiveRequestedOutput = requestedOutput;
     if (requestedOutput === 'auto') {
       const baseDir = resolvedSourceFile ? dirname(resolvedSourceFile) : defaultRoot;
@@ -1221,14 +1201,26 @@ export function generatePrototype({ spec: inputSpec, source: sourcePathArg, sour
     source = join(artifactDir, 'source.json');
     writeFileSync(source, JSON.stringify(spec, null, 2) + '\n', { flag: 'wx' });
     stage = 'compile';
+    reportPrototypeProgress('compile', 0, 1);
     const compiled = compilePrototype(resolvedSourceFile ?? source, artifactDir, { targetVersion: context.targetVersion, strictAudit, autoHeal: Boolean(autoHeal) });
+    reportPrototypeProgress('compile', 1, 1);
     plan = JSON.parse(readFileSync(compiled.planPath, 'utf8'));
     if (!compiled.ok) {
       const error = new Error('原型未通过布局检查。');
-      error.diagnostics = (compiled.audit?.failures ?? []).map(f => ({
-        severity: 'error', code: 'E_LAYOUT', pointer: '/', pageName: f.page,
-        message: typeof f === 'string' ? f : JSON.stringify(f),
-      }));
+      error.diagnostics = (compiled.audit?.failures ?? []).map(f => {
+        if (typeof f === 'string') return { severity: 'error', code: 'E_LAYOUT', pointer: '/', message: f };
+        const readable = f?.message && typeof f.message === 'string' ? f.message : null;
+        const entry = {
+          severity: 'error',
+          code: 'E_LAYOUT',
+          pointer: '/',
+          pageName: f?.page,
+          message: readable || JSON.stringify(f),
+        };
+        if (f?.suggestion) entry.suggestion = f.suggestion;
+        if (readable) entry.data = f;
+        return entry;
+      });
       if (!error.diagnostics.length) error.diagnostics = (compiled.warnings ?? []).map(message => ({
         code: 'E_LAYOUT', pointer: '/', message, pageName: message.match(/^\[([^\]]+)\]/)?.[1],
       }));
@@ -1537,7 +1529,7 @@ with open(out_p, 'w', encoding='utf-8') as f:
         json.dump(res['spec'], f, ensure_ascii=False, indent=2)
         f.write('\\n')
 `;
-      const proc = spawnSync('python3', ['-c', pyScript], { encoding: 'utf8' });
+      const proc = spawnPythonSync(['-c', pyScript], { encoding: 'utf8' });
       if (proc.status !== 0 || !pathExists(reportPath)) {
         throw Object.assign(new Error(`lift 失败：${(proc.stderr || proc.stdout || '').trim()}`), { code: 'E_LIFT_FAILED' });
       }
@@ -1709,7 +1701,7 @@ with open(${JSON.stringify(reportPath)}, 'w', encoding='utf-8') as f:
     json.dump(res, f, ensure_ascii=False, indent=2)
 sys.exit(0 if res.get('ok') else 2)
 `;
-    const proc = spawnSync('python3', ['-c', pyMerge], { encoding: 'utf8' });
+    const proc = spawnPythonSync(['-c', pyMerge], { encoding: 'utf8' });
     const report = pathExists(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
     if (proc.status === 2 || (report && !report.ok)) {
       if (report?.status === 'layout_gate_failed' || report?.code === 'E_MERGE_LAYOUT_GATE') {
@@ -1941,7 +1933,7 @@ function generateFromImage({
           if (typeof r === 'string') patchArgs.push('--replace', r);
           else if (r && typeof r.old === 'string' && typeof r.new === 'string') patchArgs.push('--replace', `${r.old}=${r.new}`);
         }
-        const patchProc = spawnSync('python3', patchArgs, { encoding: 'utf8' });
+        const patchProc = spawnPythonSync(patchArgs, { encoding: 'utf8' });
         if (patchProc.status !== 0) {
           throw Object.assign(new Error(`OCR 文案替换失败：${(patchProc.stderr || patchProc.stdout || '').trim()}`), { code: 'E_TRACE_PATCH' });
         }
@@ -1950,7 +1942,7 @@ function generateFromImage({
       const refForCrop = imagePath || (curSpec.reference && pathExists(curSpec.reference) ? curSpec.reference : null);
       const hasUncropped = (curSpec.frames ?? []).some(f => (f.children ?? []).some(c => c.kind === 'image' && c.crop && !c.imageKey));
       if (hasUncropped && refForCrop) {
-        const cropProc = spawnSync('python3', [TRACE_PY, 'crop', specPath, '--source', refForCrop, '-o', specPath, '--scale', String(curSpec.scale ?? effectiveScale)], { encoding: 'utf8' });
+        const cropProc = spawnPythonSync([TRACE_PY, 'crop', specPath, '--source', refForCrop, '-o', specPath, '--scale', String(curSpec.scale ?? effectiveScale)], { encoding: 'utf8' });
         if (cropProc.status !== 0) {
           throw Object.assign(new Error(`图片局部媒体裁切失败：${(cropProc.stderr || cropProc.stdout || '').trim()}`), { code: 'E_TRACE_CROP' });
         }
@@ -1961,7 +1953,7 @@ function generateFromImage({
         if (typeof r === 'string') draftArgs.push('--replace', r);
         else if (r && typeof r.old === 'string' && typeof r.new === 'string') draftArgs.push('--replace', `${r.old}=${r.new}`);
       }
-      const draftProc = spawnSync('python3', draftArgs, { encoding: 'utf8' });
+      const draftProc = spawnPythonSync(draftArgs, { encoding: 'utf8' });
       if (draftProc.status !== 0 || !pathExists(specPath)) {
         throw Object.assign(new Error(`图片识别与分层提取失败：${(draftProc.stderr || draftProc.stdout || '').trim()}`), { code: 'E_TRACE_DRAFT' });
       }
@@ -1981,7 +1973,7 @@ function generateFromImage({
     writeFileSync(axvgPath, JSON.stringify(axvgPayload, null, 2) + '\n');
 
     stage = 'rp9_spec';
-    const rp9Proc = spawnSync('python3', [TRACE_PY, 'rp9-spec', specPath, '-o', rp9SpecPath, '--assets-dir', assetsDir], { encoding: 'utf8' });
+    const rp9Proc = spawnPythonSync([TRACE_PY, 'rp9-spec', specPath, '-o', rp9SpecPath, '--assets-dir', assetsDir], { encoding: 'utf8' });
     if (rp9Proc.status !== 0 || !pathExists(rp9SpecPath)) {
       throw Object.assign(new Error(`转换 RP9 原生场景规格失败：${(rp9Proc.stderr || rp9Proc.stdout || '').trim()}`), { code: 'E_RP9_SPEC' });
     }
@@ -2066,7 +2058,7 @@ if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIden
     if (refSource && pathExists(refSource)) {
       const verifyArgs = [TRACE_PY, 'verify', specPath, '--source', refSource, '-o', artifactDir, '--scale', String(traceSpec.scale ?? effectiveScale)];
       if (previewImgPath) verifyArgs.push('--preview', previewImgPath);
-      const verifyProc = spawnSync('python3', verifyArgs, { encoding: 'utf8' });
+      const verifyProc = spawnPythonSync(verifyArgs, { encoding: 'utf8' });
       const verifyReportPath = join(artifactDir, 'diff-report.json');
       if (pathExists(verifyReportPath)) {
         visualDiff = JSON.parse(readFileSync(verifyReportPath, 'utf8'));
@@ -2228,7 +2220,7 @@ const sessionHandlers = {
     }
     const digest = sha256Of(target);
     state.timeline.push({ op: 'save', at: now(), from: tail, path: target, sha256: digest });
-    return { path: as.startsWith('/') ? as : join(process.cwd(), as), physicalPath: target, sha256: digest, fromChainTail: tail };
+    return { path: isAbsolute(as) ? as : join(process.cwd(), as), physicalPath: target, sha256: digest, fromChainTail: tail };
   },
   locate({ path, rp, file, rpFile, query, page, type, limit = 50, offset = 0 } = {}) {
     const targetPath = path ?? rp ?? file ?? rpFile;
@@ -2594,6 +2586,7 @@ export const sessionTools = [
     inputSchema: { type: 'object', properties: { path: { type: 'string', minLength: 1 }, rp: { type: 'string', minLength: 1 }, file: { type: 'string', minLength: 1 }, rpFile: { type: 'string', minLength: 1 }, deep: { type: 'boolean' }, includeCrossPageDuplicates: { type: 'boolean', description: '可选：deep=true 时是否返回跨页面共享组件同名元件列表，默认 false（仅返回同页内重名元件）。' } }, additionalProperties: false },
     handler: sessionHandlers.verify,
   },
+  ...studioTools,
 ];
 
 const sessionToolIndex = new Map(sessionTools.map(tool => [tool.name, input => {
@@ -2601,7 +2594,9 @@ const sessionToolIndex = new Map(sessionTools.map(tool => [tool.name, input => {
   const value = tool.handler(input);
   const finish = result => toolResult(result, result.ok === false || result.status === 'failed' || result.status === 'conflict');
   if (value && typeof value.then === 'function') return value.then(finish).catch(error => toolResult({ status: 'failed',
-    diagnostics: [{ code: error.code ?? 'E_TOOL_INPUT', message: error.message, nextAction: '检查参数、当前源码及浏览器控制权后重试。' }],
+    diagnostics: [{ code: error.code ?? 'E_TOOL_INPUT', message: error.message,
+      ...Object.fromEntries(['field', 'candidates', 'sourceSpan', 'line', 'column', 'snippet'].filter(key => error[key] !== undefined).map(key => [key, error[key]])),
+      nextAction: error.code === 'E_WRITE_OUTCOME_UNKNOWN' ? '先读取当前版本和实际内容，确认本次写入结果；不要盲目重发。' : '按返回字段与候选修正参数；用studio_describe按需读取公开契约。' }],
   }, true));
   return finish(value);
 }]));
